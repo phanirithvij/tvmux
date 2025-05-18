@@ -33,9 +33,17 @@ if [[ "$1" == "init" ]]; then
     echo "$SESSION_NAME" > "$FULL_DIR/session_name"
     echo "$FIFO" > "$FULL_DIR/fifo_path"
     
+    # Create lock file for this session
+    LOCK_FILE="$FULL_DIR/recording.lock"
+    echo $$ > "$LOCK_FILE"
+    
     # Start asciinema recording in background
     (
-        asciinema rec "$FULL_DIR/session.cast" -c "stdbuf -o0 tail -F $FIFO" &
+        ASCIINEMA_CMD="asciinema rec"
+        if [[ -f "$FULL_DIR/session.cast" ]]; then
+            ASCIINEMA_CMD="$ASCIINEMA_CMD --append"
+        fi
+        $ASCIINEMA_CMD "$FULL_DIR/session.cast" -c "stdbuf -o0 tail -F $FIFO" &
         asciinema_pid=$!
         echo "$asciinema_pid" > "$FULL_DIR/asciinema_pid"
         
@@ -49,12 +57,12 @@ if [[ "$1" == "init" ]]; then
             kill $asciinema_pid
         fi
         rm -f "$FIFO"
+        rm -f "$FULL_DIR/recording.lock"
         echo "Recording ended: $FULL_DIR"
     ) &
     
-    # Set up hooks for pane changes
+    # Set up hook for pane changes (only use one hook to avoid duplicates)
     tmux set-hook -g pane-focus-in "run-shell '$SCRIPT_PATH pane-change'"
-    tmux set-hook -g window-pane-changed "run-shell '$SCRIPT_PATH pane-change'"
     
     # Initial pane capture
     "$SCRIPT_PATH" pane-change
@@ -72,6 +80,12 @@ elif [[ "$1" == "pane-change" ]]; then
             current_session_id=$(tmux display-message -p '#{session_id}')
             
             if [[ "$stored_session_id" == "$current_session_id" ]]; then
+                # Check lock file to ensure init is complete
+                LOCK_FILE="$session_dir/recording.lock"
+                if [[ ! -f "$LOCK_FILE" ]]; then
+                    exit 0
+                fi
+                
                 FIFO=$(cat "$session_dir/fifo_path" 2>/dev/null || continue)
                 CAST_FILE="$session_dir/session.cast"
                 ACTIVE_PANE_FILE="$session_dir/active_pane"
@@ -154,9 +168,8 @@ elif [[ "$1" == "stop" ]]; then
     # Stop recording for a session
     SESSION_ID=$(tmux display-message -p '#{session_id}')
     
-    # Clear the hooks first
+    # Clear the hook
     tmux set-hook -gu pane-focus-in
-    tmux set-hook -gu window-pane-changed
     
     for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1); do
         if [[ -f "$session_dir/session_id" ]]; then
