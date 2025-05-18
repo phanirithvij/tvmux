@@ -1,65 +1,186 @@
 #!/bin/bash
+set -e
 
-SESSION_RAW=$(tmux display -p '#{session_created}')
-SESSION_ID=$(tmux display -p '#{session_id}')
-PANE_PID=$$
+# Base directory for recordings
+BASE_DIR="$HOME/Videos/asciinema/tmux"
 
-# Format session start as human-readable and hierarchical
-SESSION_DIR=$(date -d "@$SESSION_RAW" +%Y-%m/%Y%m%d_%H%M%S)
-DIR="$HOME/Videos/asciinema/tmux/$SESSION_DIR"
-META="$DIR/meta"
-mkdir -p "$META"
-
-FIFO="$DIR/$PANE_PID.cast.fifo"
-OUT="$DIR/$PANE_PID.cast.zst"
-
-record_metadata() {
-  echo "$SESSION_ID" > "$META/session_id"
-  echo "$PANE_PID" > "$META/pane.$PANE_PID"
+# Function to get the script's own path
+get_script_path() {
+    echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 }
+SCRIPT_PATH=$(get_script_path)
 
-record_metadata
-mkfifo "$FIFO"
-(
-  zstd -T1 < "$FIFO" > "$OUT" &
-  wait $! 
-) &
-
-# Spawn session monitor in background subshell
-(
-  pid_file="$META/geometry.pid"
-  log_file="$META/geometry.log"
-
-  # exit early if already running
-  if [[ -f "$pid_file" ]] && kill -0 $(cat "$pid_file" 2>/dev/null) 2>/dev/null; then
+# Handle different execution modes
+if [[ "$1" == "init" ]]; then
+    # Initialize recording for a new session
+    
+    # Get tmux session info
+    SESSION_ID=$(tmux display-message -p '#{session_id}')
+    SESSION_NAME=$(tmux display-message -p '#{session_name}')
+    SESSION_START=$(tmux display-message -p '#{session_created}')
+    
+    # Create directory structure
+    SESSION_DIR=$(date -d "@$SESSION_START" +%Y%m/%Y%m%d_%H%M%S_$SESSION_NAME)
+    FULL_DIR="$BASE_DIR/$SESSION_DIR"
+    mkdir -p "$FULL_DIR"
+    
+    # Create FIFO
+    FIFO="$FULL_DIR/tmux_stream.fifo"
+    mkfifo "$FIFO"
+    
+    # Save session info
+    echo "$SESSION_ID" > "$FULL_DIR/session_id"
+    echo "$SESSION_NAME" > "$FULL_DIR/session_name"
+    echo "$FIFO" > "$FULL_DIR/fifo_path"
+    
+    # Start asciinema recording in background
+    (
+        asciinema rec "$FULL_DIR/session.cast" -c "stdbuf -o0 tail -F $FIFO" &
+        asciinema_pid=$!
+        echo "$asciinema_pid" > "$FULL_DIR/asciinema_pid"
+        
+        # Monitor tmux session existence
+        while tmux has-session -t "$SESSION_ID" 2>/dev/null; do
+            sleep 1
+        done
+        
+        # Kill asciinema when session ends
+        kill $asciinema_pid 2>/dev/null || true
+        rm -f "$FIFO"
+        echo "Recording ended: $FULL_DIR"
+    ) &
+    
+    # Set up hooks for pane changes
+    tmux set-hook -g pane-focus-in "run-shell '$SCRIPT_PATH pane-change'"
+    tmux set-hook -g window-pane-changed "run-shell '$SCRIPT_PATH pane-change'"
+    
+    # Initial pane capture
+    "$SCRIPT_PATH" pane-change
+    
+    echo "Recording started in $FULL_DIR"
     exit 0
-  fi
 
-  echo $$ > "$pid_file"
-
-  clean_fifo() {
-    [[ -p "$1" ]] && ! lsof "$1" &>/dev/null && rm -f "$1"
-  }
-
-  cleanup_geometry_monitor() {
-    rm -f "$pid_file"
-    for fifo in "$DIR"/*.cast.fifo; do
-      clean_fifo "$fifo"
+elif [[ "$1" == "pane-change" ]]; then
+    # Handle pane change event
+    
+    # Find the session info
+    for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1); do
+        if [[ -f "$session_dir/session_id" ]]; then
+            stored_session_id=$(cat "$session_dir/session_id")
+            current_session_id=$(tmux display-message -p '#{session_id}')
+            
+            if [[ "$stored_session_id" == "$current_session_id" ]]; then
+                FIFO=$(cat "$session_dir/fifo_path")
+                ACTIVE_PANE_FILE="$session_dir/active_pane"
+                break
+            fi
+        fi
     done
-  }
-
-  trap cleanup_geometry_monitor EXIT
-
-  current=""
-  while tmux has-session -t "$SESSION_ID" 2>/dev/null; do
-    next=$(tmux list-panes -a -F '#{pane_id} #{session_name}:#{window_index}.#{pane_index} #{window_name}#{?window_active,*,} #{pane_width}x#{pane_height}@#{pane_left},#{pane_top}#{?pane_active,*,}' | xargs echo || true)
-    if [[ -n "$next" && "$current" != "$next" ]]; then
-      echo "$(date +%s) $next" >> "$log_file"
-      current="$next"
+    
+    # If we didn't find the session info, exit
+    if [[ -z "$FIFO" ]]; then
+        exit 1
     fi
-    sleep 2
-  done
-) &
-disown
+    
+    # Get current active pane
+    CURRENT_PANE=$(tmux display-message -p '#{pane_id}')
+    
+    # Check if this is a new pane
+    if [[ -f "$ACTIVE_PANE_FILE" ]]; then
+        PREV_PANE=$(cat "$ACTIVE_PANE_FILE")
+        if [[ "$PREV_PANE" == "$CURRENT_PANE" ]]; then
+            # Same pane, no change needed
+            exit 0
+        fi
+        
+        # Stop capture on previous pane
+        tmux pipe-pane -t "$PREV_PANE"
+    fi
+    
+    # Update active pane file
+    echo "$CURRENT_PANE" > "$ACTIVE_PANE_FILE"
+    
+    # Get pane dimensions
+    WIDTH=$(tmux display-message -p -t "$CURRENT_PANE" '#{pane_width}')
+    HEIGHT=$(tmux display-message -p -t "$CURRENT_PANE" '#{pane_height}')
+    
+    # First send a sync marker to help with buffering issues
+    echo -e "\n\033[1;30m-- SYNC MARKER --\033[0m\n" > "$FIFO"
+    sync
+    
+    # Clear screen and set terminal size
+    echo -e "\033[2J\033[H\033[8;${HEIGHT};${WIDTH}t" > "$FIFO"
+    sync
+    
+    # Output pane identifier
+    echo -e "\033[1;30m-- PANE: $CURRENT_PANE (${WIDTH}x${HEIGHT}) --\033[0m" > "$FIFO"
+    sync
+    
+    # Dump current pane content with escape sequences preserved
+    tmux capture-pane -e -p -t "$CURRENT_PANE" > "$FIFO"
+    sync
+    
+    # Get cursor position (adding 1 to convert from 0-based to 1-based)
+    CURSOR_Y=$(tmux display-message -p -t "$CURRENT_PANE" '#{cursor_y}')
+    CURSOR_X=$(tmux display-message -p -t "$CURRENT_PANE" '#{cursor_x}')
+    CURSOR_Y=$((CURSOR_Y + 1))
+    CURSOR_X=$((CURSOR_X + 1))
+    
+    # Position cursor with explicit sequence
+    echo -e "\033[${CURSOR_Y};${CURSOR_X}H" > "$FIFO"
+    sync
+    
+    # Start capturing output with unbuffered cat
+    tmux pipe-pane -t "$CURRENT_PANE" "stdbuf -o0 cat > $FIFO"
+    
+    exit 0
 
-exec asciinema rec -q -y "$FIFO"
+elif [[ "$1" == "stop" ]]; then
+    # Stop recording for a session
+    SESSION_ID=$(tmux display-message -p '#{session_id}')
+    
+    # Clear the hooks first
+    tmux set-hook -gu pane-focus-in
+    tmux set-hook -gu window-pane-changed
+    
+    for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1); do
+        if [[ -f "$session_dir/session_id" ]]; then
+            stored_session_id=$(cat "$session_dir/session_id")
+            
+            if [[ "$stored_session_id" == "$SESSION_ID" ]]; then
+                # Stop any active pipe
+                if [[ -f "$session_dir/active_pane" ]]; then
+                    ACTIVE_PANE=$(cat "$session_dir/active_pane")
+                    tmux pipe-pane -t "$ACTIVE_PANE"
+                fi
+                
+                # Kill asciinema
+                if [[ -f "$session_dir/asciinema_pid" ]]; then
+                    ASCIINEMA_PID=$(cat "$session_dir/asciinema_pid")
+                    kill $ASCIINEMA_PID 2>/dev/null || true
+                fi
+                
+                # Remove FIFO
+                if [[ -f "$session_dir/fifo_path" ]]; then
+                    FIFO=$(cat "$session_dir/fifo_path")
+                    rm -f "$FIFO"
+                fi
+                
+                echo "Recording stopped: $session_dir"
+                exit 0
+            fi
+        fi
+    done
+    
+    echo "No active recording found for this session"
+    exit 1
+
+else
+    # Display usage
+    echo "Usage:"
+    echo "  $0 init        - Start recording the current tmux session"
+    echo "  $0 stop        - Stop recording the current tmux session"
+    echo "  $0 clear-hooks - Just clear the tmux hooks without stopping recording"
+    echo "  $0 pane-change - Internal command for handling pane changes"
+    exit 1
+fi
