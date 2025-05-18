@@ -20,7 +20,10 @@ record_metadata() {
 
 record_metadata
 mkfifo "$FIFO"
-zstd --fast -T0 < "$FIFO" > "$OUT" &
+(
+  zstd -T1 < "$FIFO" > "$OUT" &
+  wait $! 
+) &
 
 # Spawn session monitor in background subshell
 (
@@ -49,7 +52,7 @@ zstd --fast -T0 < "$FIFO" > "$OUT" &
 
   current=""
   while tmux has-session -t "$SESSION_ID" 2>/dev/null; do
-    next=$(tmux list-panes -a -F '#{pane_id} #{session_name}:#{window_index}.#{pane_index} #{pane_width}x#{pane_height}@#{pane_left},#{pane_top}' | xargs echo || true)
+    next=$(tmux list-panes -a -F '#{pane_id} #{session_name}:#{window_index}.#{pane_index} #{window_name}#{?window_active,*,} #{pane_width}x#{pane_height}@#{pane_left},#{pane_top}#{?pane_active,*,}' | xargs echo || true)
     if [[ -n "$next" && "$current" != "$next" ]]; then
       echo "$(date +%s) $next" >> "$log_file"
       current="$next"
