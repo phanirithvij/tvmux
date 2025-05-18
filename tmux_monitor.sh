@@ -39,13 +39,15 @@ if [[ "$1" == "init" ]]; then
         asciinema_pid=$!
         echo "$asciinema_pid" > "$FULL_DIR/asciinema_pid"
         
-        # Monitor tmux session existence
-        while tmux has-session -t "$SESSION_ID" 2>/dev/null; do
+        # Monitor tmux session existence and asciinema process
+        while tmux has-session -t "$SESSION_ID" 2>/dev/null && kill -0 $asciinema_pid 2>/dev/null; do
             sleep 1
         done
         
-        # Kill asciinema when session ends
-        kill $asciinema_pid 2>/dev/null || true
+        # Kill asciinema if still running
+        if kill -0 $asciinema_pid 2>/dev/null; then
+            kill $asciinema_pid
+        fi
         rm -f "$FIFO"
         echo "Recording ended: $FULL_DIR"
     ) &
@@ -66,19 +68,21 @@ elif [[ "$1" == "pane-change" ]]; then
     # Find the session info
     for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1); do
         if [[ -f "$session_dir/session_id" ]]; then
-            stored_session_id=$(cat "$session_dir/session_id")
+            stored_session_id=$(cat "$session_dir/session_id" 2>/dev/null || continue)
             current_session_id=$(tmux display-message -p '#{session_id}')
             
             if [[ "$stored_session_id" == "$current_session_id" ]]; then
-                FIFO=$(cat "$session_dir/fifo_path")
+                FIFO=$(cat "$session_dir/fifo_path" 2>/dev/null || continue)
+                CAST_FILE="$session_dir/session.cast"
                 ACTIVE_PANE_FILE="$session_dir/active_pane"
+                FOUND_SESSION=true
                 break
             fi
         fi
     done
     
     # If we didn't find the session info, exit
-    if [[ -z "$FIFO" ]]; then
+    if [[ -z "$FIFO" || -z "$FOUND_SESSION" ]]; then
         exit 1
     fi
     
@@ -100,24 +104,28 @@ elif [[ "$1" == "pane-change" ]]; then
     # Update active pane file
     echo "$CURRENT_PANE" > "$ACTIVE_PANE_FILE"
     
+    # Append pane change event to cast file
+    TIMESTAMP=$(date +%s.%N)
+    echo "[$TIMESTAMP, \"o\", \"\\n\\033[1;30m-- PANE SWITCH: $CURRENT_PANE --\\033[0m\\n\"]" >> "$CAST_FILE"
+    
     # Get pane dimensions
     WIDTH=$(tmux display-message -p -t "$CURRENT_PANE" '#{pane_width}')
     HEIGHT=$(tmux display-message -p -t "$CURRENT_PANE" '#{pane_height}')
     
     # First send a sync marker to help with buffering issues
-    echo -e "\n\033[1;30m-- SYNC MARKER --\033[0m\n" > "$FIFO"
+    echo -e "\n\033[1;30m-- SYNC MARKER --\033[0m\n" > "$FIFO" || true
     sync
     
     # Clear screen and set terminal size
-    echo -e "\033[2J\033[H\033[8;${HEIGHT};${WIDTH}t" > "$FIFO"
+    echo -e "\033[2J\033[H\033[8;${HEIGHT};${WIDTH}t" > "$FIFO" || true
     sync
     
     # Output pane identifier
-    echo -e "\033[1;30m-- PANE: $CURRENT_PANE (${WIDTH}x${HEIGHT}) --\033[0m" > "$FIFO"
+    echo -e "\033[1;30m-- PANE: $CURRENT_PANE (${WIDTH}x${HEIGHT}) --\033[0m" > "$FIFO" || true
     sync
     
     # Dump current pane content with escape sequences preserved
-    tmux capture-pane -e -p -t "$CURRENT_PANE" > "$FIFO"
+    tmux capture-pane -e -p -t "$CURRENT_PANE" > "$FIFO" || true
     sync
     
     # Get cursor position (adding 1 to convert from 0-based to 1-based)
@@ -127,12 +135,19 @@ elif [[ "$1" == "pane-change" ]]; then
     CURSOR_X=$((CURSOR_X + 1))
     
     # Position cursor with explicit sequence
-    echo -e "\033[${CURSOR_Y};${CURSOR_X}H" > "$FIFO"
+    echo -e "\033[${CURSOR_Y};${CURSOR_X}H" > "$FIFO" || true
     sync
     
-    # Start capturing output with unbuffered cat
-    tmux pipe-pane -t "$CURRENT_PANE" "stdbuf -o0 cat > $FIFO"
+    # Start capturing output with unbuffered cat (with timeout to prevent blocking)
+    tmux pipe-pane -t "$CURRENT_PANE" "stdbuf -o0 timeout --preserve-status 3600 cat > $FIFO"
     
+    exit 0
+
+elif [[ "$1" == "clear-hooks" ]]; then
+    # Clear tmux hooks without stopping recording
+    tmux set-hook -gu pane-focus-in
+    tmux set-hook -gu window-pane-changed
+    echo "Hooks cleared"
     exit 0
 
 elif [[ "$1" == "stop" ]]; then
@@ -145,25 +160,27 @@ elif [[ "$1" == "stop" ]]; then
     
     for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1); do
         if [[ -f "$session_dir/session_id" ]]; then
-            stored_session_id=$(cat "$session_dir/session_id")
+            stored_session_id=$(cat "$session_dir/session_id" 2>/dev/null || continue)
             
             if [[ "$stored_session_id" == "$SESSION_ID" ]]; then
                 # Stop any active pipe
                 if [[ -f "$session_dir/active_pane" ]]; then
-                    ACTIVE_PANE=$(cat "$session_dir/active_pane")
-                    tmux pipe-pane -t "$ACTIVE_PANE"
+                    ACTIVE_PANE=$(cat "$session_dir/active_pane" 2>/dev/null || true)
+                    [[ -n "$ACTIVE_PANE" ]] && tmux pipe-pane -t "$ACTIVE_PANE"
                 fi
                 
                 # Kill asciinema
                 if [[ -f "$session_dir/asciinema_pid" ]]; then
-                    ASCIINEMA_PID=$(cat "$session_dir/asciinema_pid")
-                    kill $ASCIINEMA_PID 2>/dev/null || true
+                    ASCIINEMA_PID=$(cat "$session_dir/asciinema_pid" 2>/dev/null || true)
+                    if [[ -n "$ASCIINEMA_PID" ]] && kill -0 $ASCIINEMA_PID 2>/dev/null; then
+                        kill $ASCIINEMA_PID
+                    fi
                 fi
                 
                 # Remove FIFO
                 if [[ -f "$session_dir/fifo_path" ]]; then
-                    FIFO=$(cat "$session_dir/fifo_path")
-                    rm -f "$FIFO"
+                    FIFO=$(cat "$session_dir/fifo_path" 2>/dev/null || true)
+                    [[ -n "$FIFO" ]] && rm -f "$FIFO"
                 fi
                 
                 echo "Recording stopped: $session_dir"
