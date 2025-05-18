@@ -5,7 +5,7 @@ SESSION_ID=$(tmux display -p '#{session_id}')
 PANE_PID=$$
 
 # Format session start as human-readable and hierarchical
-SESSION_DIR=$(date -d "@$SESSION_RAW" +%Y%m/%Y%m%d_%H%M%S)
+SESSION_DIR=$(date -d "@$SESSION_RAW" +%Y-%m/%Y%m%d_%H%M%S)
 DIR="$HOME/Videos/asciinema/tmux/$SESSION_DIR"
 META="$DIR/meta"
 mkdir -p "$META"
