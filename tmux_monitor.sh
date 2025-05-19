@@ -159,13 +159,14 @@ output_pane() {
     echo -e "\033[2J\033[H\033[8;${height};${width}t"
     
     # Dump current pane content with escape sequences preserved
-    tmux capture-pane -e -p -t "$pane_id"
+    # Capture exactly the visible area (0 to height-1)
+    tmux capture-pane -e -p -S 0 -E $((height - 2)) -t "$pane_id"
     
     # Get cursor position (adding 1 to convert from 0-based to 1-based)
     local cursor_y=$(tmux display-message -p -t "$pane_id" '#{cursor_y}')
     local cursor_x=$(tmux display-message -p -t "$pane_id" '#{cursor_x}')
-    cursor_y=$((cursor_y))
-    cursor_x=$((cursor_x))
+    cursor_y=$((cursor_y + 1))
+    cursor_x=$((cursor_x + 1))
     
     # Position cursor with explicit sequence
     echo -e "\033[${cursor_y};${cursor_x}H"
