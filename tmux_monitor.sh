@@ -132,14 +132,14 @@ set_active_pane() {
         [[ -n "$prev_pane" ]] && stop_pipe "$prev_pane"
     fi
     
-    # Set new active pane (empty means stop recording)
+    # Set new active pane (none pauses recording)
     if [[ -n "$pane_id" ]]; then
         # Output current pane state
-        output_pane "$pane_id" > "$fifo" 2>&1
+        output_pane "$pane_id" >> "$fifo" 2>&1
         
         echo "$pane_id" > "$active_pane_file"
         # Start capturing output
-        tmux pipe-pane -t "$pane_id" "cat > '$fifo'"
+        tmux pipe-pane -t "$pane_id" "cat >> '$fifo'"
     else
         rm -f "$active_pane_file"
     fi
@@ -253,7 +253,7 @@ start_asciinema_background() {
         script -qfc "stty rows $height cols $width 2>/dev/null; $asciinema_cmd \"$session_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
         local asciinema_pid=$!
         echo "$asciinema_pid" > "$session_dir/asciinema_pid"
-        
+
         # Monitor tmux session existence and asciinema process
         while tmux has-session -t "$session_id" 2>/dev/null && kill -0 "$asciinema_pid" 2>/dev/null; do
             sleep 1
@@ -291,7 +291,6 @@ handle_start_recording() {
     echo "$session_id" > "$session_dir/session_id"
     # Store name for display purposes only
     echo "$session_name" > "$session_dir/session_name"
-    
     
     # Start asciinema recording in background
     start_asciinema_background "$session_dir" "$session_id" "$fifo"
