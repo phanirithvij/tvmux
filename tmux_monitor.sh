@@ -170,7 +170,7 @@ output_pane() {
     cursor_x=$((cursor_x + 1))
     
     # Position cursor with explicit sequence
-    echo -e "\033[${cursor_y};${cursor_x}H"
+    printf "\033[%d;%dH" "$cursor_y" "$cursor_x"
 }
 
 # Function to start asciinema background process
