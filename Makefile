@@ -11,6 +11,8 @@ start:
 stop:
 	@$(SCRIPT) stop
 	@echo "Recording stopped"
+status:
+	@$(SCRIPT) status
 
 clean:
 	@rm -rf $(CACHE_DIR) current.cast
