@@ -1,0 +1,26 @@
+name: Release tvmux
+
+on:
+  push:
+    tags:
+      - '*.*.*'  # Trigger on any semantic version tag (e.g. 0.3.1)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build script
+        run: make build
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: tvmux ${{ github.ref_name }}
+          body_path: README.md
+          files: build/tvmux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

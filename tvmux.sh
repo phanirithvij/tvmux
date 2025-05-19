@@ -88,5 +88,7 @@ handle_stop() {
     log_info "Recording stopped: $session_dir"
 }
 
-# Dispatch commands
-cmd_dispatch "$@"
+# Only dispatch commands if this script is being run directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    cmd_dispatch "$@"
+fi
