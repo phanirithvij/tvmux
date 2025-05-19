@@ -16,16 +16,38 @@ log_msg() {
     echo "$@" 1>&2
 }
 
-# TODO: this is needed because asciinema spawns multiple processes.
-# is there a cleaner way to kill a process group?
+# Kill a process and all its descendants, gracefully then forcefully
 kill_tree() {
-    local pid="$1"
-    local sig="${2:--TERM}"
-    local children=$(pgrep -P "$pid")
-    for child in $children; do
-        kill_tree "$child" "$sig"
+    local root_pid="$1"
+    
+    # Get all descendants recursively
+    get_descendants() {
+        local pid=$1
+        echo "$pid"
+        local children=$(pgrep -P "$pid" 2>/dev/null)
+        for child in $children; do
+            get_descendants "$child"
+        done
+    }
+    
+    # Get all PIDs in the tree
+    local pids=$(get_descendants "$root_pid")
+    
+    # Send SIGTERM to all
+    kill -TERM $pids 2>/dev/null || true
+    
+    # Check if any are still alive after a brief pause
+    sleep 0.1
+    local remaining=""
+    for pid in $pids; do
+        kill -0 "$pid" 2>/dev/null && remaining="$remaining $pid"
     done
-    kill -"$sig" "$pid" 2>/dev/null || true
+    
+    # If any survived, wait a bit more then force kill
+    if [[ -n "$remaining" ]]; then
+        sleep 0.9
+        kill -KILL $remaining 2>/dev/null || true
+    fi
 }
 
 # Function to get current tmux session ID
@@ -33,21 +55,18 @@ get_current_session_id() {
     tmux display-message -p '#{session_id}'
 }
 
-# Get the recording dir for the current tmux session
-# TODO: rename this to "get_session_dir" and get rid of the search.
-#       Use the function to 
+# Compute the recording directory path from session data
+get_session_dir() {
+    local session_start=$(tmux display-message -p '#{session_created}')
+    local session_name=$(tmux display-message -p '#{session_name}')
+    
+    local session_dir=$(date -d "@$session_start" +%Y-%m/%Y%m%d_%H%M%S_$session_name)
+    echo "$BASE_DIR/$session_dir"
+}
+
+# For compatibility - will be removed once all callers are updated
 find_session_dir() {
-    local session_id="$1"
-    for session_dir in $(find "$BASE_DIR" -type d -name "*" -mtime -1 2>/dev/null); do
-        if [[ -f "$session_dir/session_id" ]]; then
-            local stored_id=$(cat "$session_dir/session_id" 2>/dev/null || continue)
-            if [[ "$stored_id" == "$session_id" ]]; then
-                echo "$session_dir"
-                return 0
-            fi
-        fi
-    done
-    return 1
+    get_session_dir
 }
 
 # gets the root asciinema PID from session directory
@@ -62,12 +81,10 @@ get_asciinema_pid() {
 
 # Check if recording is active for session
 is_recording_active() {
-    local session_id="$1"
-    local session_dir
+    local session_dir=$(get_session_dir)
     
-    if ! session_dir=$(find_session_dir "$session_id"); then
-        return 1
-    fi
+    # Check if directory exists
+    [[ ! -d "$session_dir" ]] && return 1
     
     # Check if asciinema process is running
     local pid=$(get_asciinema_pid "$session_dir")
@@ -107,8 +124,10 @@ fix_asciinema_file() {
     local cast_file="$1"
     
     # No changes needed?
-    [[ ! -f "$cast_file" ]]                     && return 0
-    [[ tail -n1 "$cast_file" | grep -q '\]$' ]] && return 0
+    [[ ! -f "$cast_file" ]] && return 0
+    if tail -n1 "$cast_file" | grep -q '\]$'; then
+        return 0
+    fi
     
     # Repair the file
     local temp_file="${cast_file}.tmp"
@@ -122,17 +141,9 @@ cleanup_recording() {
     
     # Kill asciinema process
     local pid=$(get_asciinema_pid "$session_dir")
-
-    # todo: we should really move this into the kill_tree function
-    #
+    
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         kill_tree "$pid"
-        # Give processes time to clean up gracefully before force killing
-        # This helps avoid file corruption and ensures FIFOs are properly closed
-        # TODO: this sleep is run every time and 
-        sleep 1
-        # Force kill if process is still alive
-        kill -0 "$pid" >/dev/null 2>&1 && kill_tree "$pid" -KILL
     fi
 
     # Fix potentially truncated asciinema file
@@ -229,8 +240,8 @@ start_recording() {
     local session_name=$(tmux display-message -p '#{session_name}')
     
     # Check if recording is already active for this session
-    if is_recording_active "$session_id"; then
-        local existing_dir=$(find_session_dir "$session_id")
+    if is_recording_active; then
+        local existing_dir=$(get_session_dir)
         log_msg "Recording already active for session $session_name at $existing_dir"
         exit 0
     fi
@@ -239,19 +250,17 @@ start_recording() {
     local session_start=$(tmux display-message -p '#{session_created}')
     
     # Create directory structure
-    local session_dir=$(date -d "@$session_start" +%Y-%m/%Y%m%d_%H%M%S_$session_name)
-    local full_dir="$BASE_DIR/$session_dir"
+    local full_dir=$(get_session_dir)
     mkdir -p "$full_dir"
     
     # Create FIFO
     local fifo="$full_dir/tmux_stream.fifo"
     [[ ! -f "$fifo" ]] && mkfifo "$fifo"
     
-    # JUSTIFICATION: session_id file needed to map tmux session to recording directory
-    # This allows us to find the right recording when handling pane switches
-    # TODO: the session id is in the name of the dir, so this is crazy and the justification
-    # does not hold. Also why do we need to store the name?! I don't like it
-    echo "$session_id"   > "$full_dir/session_id"
+    # Store session metadata - still needed if we need to look up old recordings
+    # The session_id helps us map to this directory (since ID isn't in the dir name)
+    echo "$session_id" > "$full_dir/session_id"
+    # Store name for display purposes only
     echo "$session_name" > "$full_dir/session_name"
     
     # JUSTIFICATION: lock file ensures recording is fully initialized before pane-change events
@@ -280,14 +289,10 @@ start_recording() {
 
 # Called by the entrypoint when there's a pane change
 handle_pane_change() {
-    local session_id=$(get_current_session_id)
-    # Find the session directory
-    local session_dir
-
-    # TODO: call the function to create the name rather than find it
-    if ! session_dir=$(find_session_dir "$session_id"); then
-        exit 1
-    fi
+    local session_dir=$(get_session_dir)
+    
+    # Check if directory exists
+    [[ ! -d "$session_dir" ]] && exit 1
     
     # Check lock file to ensure init is complete
     # TODO: is_recording_active ought to handle this right?
@@ -328,21 +333,17 @@ handle_pane_change() {
 
 # Entrypoint for stopping the recording
 stop_recording() {
-    local session_id=$(get_current_session_id)
-    
     # Clear hooks
     clear_hooks
     
     # Check if recording is active
-    if ! is_recording_active "$session_id"; then
+    if ! is_recording_active; then
         log_msg "No active recording for this session"
         exit 0
     fi
     
-    # Find the session directory
-    # TODO: this is ugly ass shit
-    local session_dir
-    session_dir=$(find_session_dir "$session_id")
+    # Get the session directory
+    local session_dir=$(get_session_dir)
     
     # Stop any active pipe
     # TODO: Pretty sure that cleanup_recording should handle this instead of us
