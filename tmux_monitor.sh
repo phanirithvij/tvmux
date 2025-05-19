@@ -155,8 +155,9 @@ output_pane() {
     local width=$(tmux display-message -p -t "$pane_id" '#{pane_width}')
     local height=$(tmux display-message -p -t "$pane_id" '#{pane_height}')
     
-    # Clear screen and set terminal size  
-    printf "\033[2J\033[H\033[8;${height};${width}t"
+    # Reset terminal state, clear screen and set terminal size
+    # Reset attributes, scroll region, clear screen, home cursor, set size
+    printf "\033[0m\033[r\033[2J\033[H\033[8;${height};${width}t"
     
     # Dump current pane content with escape sequences preserved
     # Add clear-to-end-of-line after each line
