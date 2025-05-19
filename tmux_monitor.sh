@@ -298,9 +298,8 @@ handle_start_recording() {
     # Set up hooks for pane changes
     setup_hooks
     
-    # Initial pane capture
-    local current_pane=$(tmux display-message -p '#{pane_id}')
-    set_active_pane "$session_dir" "$current_pane"
+    # Initial pane capture via handler
+    "$SCRIPT_PATH" pane-change
     
     log_msg "Recording started in $session_dir"
 }
