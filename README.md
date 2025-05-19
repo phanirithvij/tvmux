@@ -10,19 +10,17 @@ This is my tmux setup
 - [x] fix the session recorder
 - [ ] get the monitor panel working so i don't need to manually create it each
       reboot.
-- [ ] Fix asciinema server compatibility (recordings cause internal server error)
+- [x] Fix asciinema server compatibility (recordings cause internal server error)
 
 ### Session recorder edge cases to handle:
 
 - [ ] Terminal modes when switching panes:
-  - [ ] Cursor visibility state (hidden/visible)
+  - [x] Cursor visibility state (hidden/visible)
   - [ ] Alternative screen buffer (e.g., vim, less, htop)
   - [ ] Application keypad mode
   - [ ] Mouse tracking mode
   - [ ] Bracketed paste mode
   - [ ] Line wrap mode
-
-- [ ] Pane resize events - need hooks for when panes are resized
 
 - [ ] Special terminal states:
   - [ ] Character encoding (UTF-8 vs others)

@@ -192,13 +192,19 @@ start_asciinema_background() {
         # Set up exit trap for cleanup
         trap "cleanup_recording '$full_dir'; clear_hooks" EXIT
         
+        # Get terminal dimensions from active pane
+        local width=$(tmux display-message -p '#{pane_width}')
+        local height=$(tmux display-message -p '#{pane_height}')
+        
         local asciinema_cmd="asciinema rec"
         if [[ -f "$full_dir/session.cast" ]]; then
             # Fix potentially truncated file before appending
             fix_asciinema_file "$full_dir/session.cast"
             asciinema_cmd="$asciinema_cmd --append"
         fi
-        script -qfc "$asciinema_cmd \"$full_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
+        
+        # Export COLUMNS and LINES for asciinema and set terminal size with stty
+        script -qfc "stty rows $height cols $width 2>/dev/null; $asciinema_cmd \"$full_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
         local asciinema_pid=$!
         echo "$asciinema_pid" > "$full_dir/asciinema_pid"
         
