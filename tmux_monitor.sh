@@ -151,7 +151,6 @@ cleanup_recording() {
     
     # Clean up files
     rm -f "$session_dir/asciinema_pid"
-    rm -f "$session_dir/recording.lock"
     rm -f "$session_dir/active_pane"
    
     fifo="$session_dir/tmux_stream.fifo"
@@ -263,11 +262,6 @@ start_recording() {
     # Store name for display purposes only
     echo "$session_name" > "$full_dir/session_name"
     
-    # JUSTIFICATION: lock file ensures recording is fully initialized before pane-change events
-    # Without this, early pane switches could try to access incomplete recording setup
-    # TODO: I'm not sure about this. we have "is_recording_active" so this seems redundant
-    local lock_file="$full_dir/recording.lock"
-    echo $$ > "$lock_file"
     
     # Start asciinema recording in background
     start_asciinema_background "$full_dir" "$session_id" "$fifo"
@@ -294,11 +288,6 @@ handle_pane_change() {
     # Check if directory exists
     [[ ! -d "$session_dir" ]] && exit 1
     
-    # Check lock file to ensure init is complete
-    # TODO: is_recording_active ought to handle this right?
-    if [[ ! -f "$session_dir/recording.lock" ]]; then
-        exit 0
-    fi
     
     # Get FIFO path
     local fifo="$session_dir/tmux_stream.fifo"
