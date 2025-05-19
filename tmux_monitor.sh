@@ -123,16 +123,13 @@ cleanup_recording() {
     rm -f "$session_dir/asciinema_pid"
     rm -f "$session_dir/recording.lock"
     rm -f "$session_dir/active_pane"
-    
+   
+    fifo="full_dir/tmux_stream.fifo"
     # Remove FIFO
-    if [[ -f "$session_dir/fifo_path" ]]; then
-        local fifo=$(cat "$session_dir/fifo_path" 2>/dev/null || true)
-        if [[ -n "$fifo" ]]; then
-            # Kill any processes using the FIFO to prevent broken pipe errors
-            fuser -k "$fifo" 2>/dev/null || true
-            rm -f "$fifo"
-        fi
-        rm -f "$session_dir/fifo_path" || true
+    if [[ -n "$fifo" ]]; then
+        # Kill any processes using the FIFO to prevent broken pipe errors
+        fuser -k "$fifo" 2>/dev/null || true
+        rm -f "$fifo"
     fi
 }
 
@@ -216,7 +213,6 @@ init_recording() {
     # Save session info
     echo "$session_id" > "$full_dir/session_id"
     echo "$session_name" > "$full_dir/session_name"
-    echo "$fifo" > "$full_dir/fifo_path"
     
     # Create lock file for this session
     local lock_file="$full_dir/recording.lock"
@@ -249,7 +245,7 @@ handle_pane_change() {
     fi
     
     # Get FIFO path
-    local fifo=$(cat "$session_dir/fifo_path" 2>/dev/null || exit 1)
+    local fifo="$session_dir/tmux_stream.fifo"
     local active_pane_file="$session_dir/active_pane"
     
     # Get current active pane
@@ -275,7 +271,7 @@ handle_pane_change() {
     sync
     
     # Start capturing output
-    tmux pipe-pane -t "$current_pane" "cat > $fifo"
+    tmux pipe-pane -t "$current_pane" "cat > /dev/null" #$fifo"
 }
 
 # Stop recording for the current session
