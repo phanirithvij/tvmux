@@ -269,12 +269,6 @@ start_recording() {
     # Set up hooks for pane changes
     setup_hooks
     
-    # Prime the fifo. If we don't do this then for some reason we don't get the
-    # first pane's output at all. 
-    # TODO: investigate and understand this because it's really wierd and seems
-    # like a dirty hack.
-    echo "" > "$fifo"
-    
     # Initial pane capture
     "$SCRIPT_PATH" pane-change
     
