@@ -171,6 +171,14 @@ output_pane() {
     
     # Position cursor with explicit sequence
     printf "\033[%d;%dH" "$cursor_y" "$cursor_x"
+    
+    # Get cursor visibility state
+    local cursor_flag=$(tmux display-message -p -t "$pane_id" '#{cursor_flag}')
+    if [[ "$cursor_flag" == "0" ]]; then
+        printf "\033[?25l"  # Hide cursor
+    else
+        printf "\033[?25h"  # Show cursor
+    fi
 }
 
 # Function to start asciinema background process
