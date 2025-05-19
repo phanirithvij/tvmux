@@ -12,9 +12,21 @@ else
     BASE_DIR="$THIS_DIR/.cache"
 fi
 
+# Logging system
+LOG_LEVEL=${LOG_LEVEL:-30}  # Default to WARNING
+
 log_msg() {
-    echo "$@" 1>&2
+    local level="$1"; shift
+    if (( level >= LOG_LEVEL )); then
+        echo "[$(date '+%H:%M:%S')] $*" >&2
+    fi
 }
+
+# Convenience functions
+log_debug() { log_msg 10 "[DEBUG] $*"; }
+log_info()  { log_msg 20 "[INFO] $*"; }
+log_warn()  { log_msg 30 "[WARN] $*"; }
+log_error() { log_msg 40 "[ERROR] $*"; }
 
 # Kill a process and all its descendants, gracefully then forcefully
 kill_tree() {
@@ -248,16 +260,16 @@ wait_for_recording_ready() {
     
     local retries=0
     while ((retries < max_retries)); do
-        log_msg "DEBUG: Checking recording (attempt $((retries + 1))/$max_retries)"
+        log_debug "Checking recording (attempt $((retries + 1))/$max_retries)"
         if is_recording "$session_dir"; then
-            log_msg "DEBUG: Recording is ready!"
+            log_debug "Recording is ready!"
             return 0
         fi
         sleep "$retry_delay"
         retries=$((retries + 1))
     done
     
-    log_msg "Warning: Recording may not be ready after ${max_retries} retries"
+    log_warn "Recording may not be ready after ${max_retries} retries"
     return 1
 }
 
@@ -296,7 +308,7 @@ start_recording_process() {
             sleep 1
         done
         
-        log_msg "Recording ended: $session_dir"
+        log_info "Recording ended: $session_dir"
     ) >/dev/null 2>&1 &
     
     # Wait for recording to actually be ready
@@ -313,7 +325,7 @@ handle_start_recording() {
     # Check if recording is already active for this session
     if is_recording; then
         local existing_dir=$(get_session_dir)
-        log_msg "Recording already active for session $session_name at $existing_dir"
+        log_info "Recording already active for session $session_name at $existing_dir"
         exit 0
     fi
 
@@ -339,7 +351,7 @@ handle_start_recording() {
     # Initial pane capture via handler
     "$SCRIPT_PATH" pane-change
     
-    log_msg "Recording started in $session_dir"
+    log_info "Recording started in $session_dir"
 }
 
 # Called by the entrypoint when there's a pane change
@@ -365,14 +377,14 @@ handle_stop_recording() {
     
     # Check if directory exists and has recording files
     if [[ ! -d "$session_dir" ]] || [[ ! -f "$session_dir/asciinema_pid" ]]; then
-        log_msg "No active recording for this session"
+        log_info "No active recording for this session"
         exit 0
     fi
     
     # Stop recording (even if processes are partially dead)
     stop_recording "$session_dir"
     
-    log_msg "Recording stopped: $session_dir"
+    log_info "Recording stopped: $session_dir"
 }
 
 # Entrypoint dispatch logic
@@ -385,7 +397,7 @@ case "$1" in
         ;;
     clear-hooks)
         clear_hooks
-        log_msg "Hooks cleared"
+        log_info "Hooks cleared"
         ;;
     stop)
         handle_stop_recording
