@@ -1,4 +1,3 @@
 *.cast
-rec-test
-tmp
 *.log
+.cache

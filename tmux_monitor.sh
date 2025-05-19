@@ -4,7 +4,13 @@ set -e
 # Script configuration
 THIS_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SCRIPT_PATH="$THIS_DIR/$(basename "${BASH_SOURCE[0]}")"
-BASE_DIR="$THIS_DIR/rec-test"
+
+# Get base directory from second parameter if provided with 'start' command
+if [[ "$1" == "start" && -n "$2" ]]; then
+    BASE_DIR="$2"
+else
+    BASE_DIR="$THIS_DIR/.cache"
+fi
 
 log_msg() {
     echo "$@" 1>&2
@@ -194,8 +200,8 @@ start_asciinema_background() {
     ) >/dev/null 2>&1 &
 }
 
-# Initialize recording for the current session
-init_recording() {
+# Start recording for the current session
+start_recording() {
     local session_id=$(get_current_session_id)
     local session_name=$(tmux display-message -p '#{session_name}')
     
@@ -312,8 +318,8 @@ stop_recording() {
 
 # Main script logic
 case "$1" in
-    init)
-        init_recording
+    start)
+        start_recording
         ;;
     pane-change)
         handle_pane_change
@@ -327,10 +333,12 @@ case "$1" in
         ;;
     *)
         echo "Usage:"
-        echo "  $0 init        - Start recording the current tmux session"
-        echo "  $0 stop        - Stop recording the current tmux session"
-        echo "  $0 clear-hooks - Just clear the tmux hooks without stopping recording"
-        echo "  $0 pane-change - Internal command for handling pane changes"
+        echo "  $0 start [path] - Start recording the current tmux session (optional: specify recording path)"
+        echo "  $0 stop         - Stop recording the current tmux session"
+        echo "  $0 clear-hooks  - Just clear the tmux hooks without stopping recording"
+        echo "  $0 pane-change  - Internal command for handling pane changes"
+        echo
+        echo "Default recording path: $THIS_DIR/.cache"
         exit 1
         ;;
 esac
