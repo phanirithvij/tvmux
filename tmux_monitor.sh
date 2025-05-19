@@ -114,12 +114,40 @@ stop_pipe() {
     tmux pipe-pane -t "$1" || true
 }
 
+# Set the active pane for recording, stopping previous if needed
+set_active_pane() {
+    local session_dir="$1"
+    local pane_id="$2"
+    local active_pane_file="$session_dir/active_pane"
+    local fifo="$session_dir/tmux_stream.fifo"
+    
+    # Check if this is the same pane
+    if [[ -f "$active_pane_file" ]]; then
+        local prev_pane=$(cat "$active_pane_file")
+        if [[ "$prev_pane" == "$pane_id" ]]; then
+            # Same pane, no change needed
+            return 0
+        fi
+        # Stop previous pane
+        [[ -n "$prev_pane" ]] && stop_pipe "$prev_pane"
+    fi
+    
+    # Set new active pane (empty means stop recording)
+    if [[ -n "$pane_id" ]]; then
+        # Output current pane state
+        output_pane "$pane_id" > "$fifo" 2>&1
+        
+        echo "$pane_id" > "$active_pane_file"
+        # Start capturing output
+        tmux pipe-pane -t "$pane_id" "cat > '$fifo'"
+    else
+        rm -f "$active_pane_file"
+    fi
+}
+
 # If asciinema is terminated while writing a super long line, or is otherwise
 # jammed up, or there's buffering issues, our recording will be missing a ']'
 # on the final line. If that was the case, this will repair it.
-#
-# TODO: this really shouldn't be run if asciinema is recording; we should bail
-# out if it is.
 fix_asciinema_file() {
     local cast_file="$1"
     
@@ -135,9 +163,12 @@ fix_asciinema_file() {
     mv "$temp_file" "$cast_file"
 }
 
-# Kill the asciinema process and clean up pid files
-cleanup_recording() {
+# Stop recording and clean up all resources
+stop_recording() {
     local session_dir="$1"
+    
+    # Stop the active pane recording
+    set_active_pane "$session_dir" ""
     
     # Kill asciinema process
     local pid=$(get_asciinema_pid "$session_dir")
@@ -151,7 +182,6 @@ cleanup_recording() {
     
     # Clean up files
     rm -f "$session_dir/asciinema_pid"
-    rm -f "$session_dir/active_pane"
    
     fifo="$session_dir/tmux_stream.fifo"
     # Remove FIFO
@@ -197,22 +227,22 @@ output_pane() {
 
 # Run asciinema in a subshell and wreap it
 start_asciinema_background() {
-    local full_dir="$1"
+    local session_dir="$1"
     local session_id="$2"
     local fifo="$3"
     
     (
         # Set up exit trap for cleanup
-        trap "cleanup_recording '$full_dir'; clear_hooks" EXIT
+        trap "stop_recording '$session_dir'; clear_hooks" EXIT
         
         # Get terminal dimensions from active pane
         local width=$(tmux display-message -p '#{pane_width}')
         local height=$(tmux display-message -p '#{pane_height}')
         
         local asciinema_cmd="asciinema rec"
-        if [[ -f "$full_dir/session.cast" ]]; then
+        if [[ -f "$session_dir/session.cast" ]]; then
             # Fix potentially truncated file before appending
-            fix_asciinema_file "$full_dir/session.cast"
+            fix_asciinema_file "$session_dir/session.cast"
             asciinema_cmd="$asciinema_cmd --append"
         fi
         
@@ -220,21 +250,21 @@ start_asciinema_background() {
         # a real terminal, if we don't do this it'll echo everything back to
         # our terminal. We need to do stty inside script so the correct .cast
         # header is created, or the web player and asciinema.org won't like it.
-        script -qfc "stty rows $height cols $width 2>/dev/null; $asciinema_cmd \"$full_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
+        script -qfc "stty rows $height cols $width 2>/dev/null; $asciinema_cmd \"$session_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
         local asciinema_pid=$!
-        echo "$asciinema_pid" > "$full_dir/asciinema_pid"
+        echo "$asciinema_pid" > "$session_dir/asciinema_pid"
         
         # Monitor tmux session existence and asciinema process
         while tmux has-session -t "$session_id" 2>/dev/null && kill -0 "$asciinema_pid" 2>/dev/null; do
             sleep 1
         done
         
-        log_msg "Recording ended: $full_dir"
+        log_msg "Recording ended: $session_dir"
     ) >/dev/null 2>&1 &
 }
 
-# Start recording for the current session
-start_recording() {
+# Entrypoint for starting recording
+handle_start_recording() {
     local session_id=$(get_current_session_id)
     local session_name=$(tmux display-message -p '#{session_name}')
     
@@ -249,30 +279,31 @@ start_recording() {
     local session_start=$(tmux display-message -p '#{session_created}')
     
     # Create directory structure
-    local full_dir=$(get_session_dir)
-    mkdir -p "$full_dir"
+    local session_dir=$(get_session_dir)
+    mkdir -p "$session_dir"
     
     # Create FIFO
-    local fifo="$full_dir/tmux_stream.fifo"
+    local fifo="$session_dir/tmux_stream.fifo"
     [[ ! -f "$fifo" ]] && mkfifo "$fifo"
     
     # Store session metadata - still needed if we need to look up old recordings
     # The session_id helps us map to this directory (since ID isn't in the dir name)
-    echo "$session_id" > "$full_dir/session_id"
+    echo "$session_id" > "$session_dir/session_id"
     # Store name for display purposes only
-    echo "$session_name" > "$full_dir/session_name"
+    echo "$session_name" > "$session_dir/session_name"
     
     
     # Start asciinema recording in background
-    start_asciinema_background "$full_dir" "$session_id" "$fifo"
+    start_asciinema_background "$session_dir" "$session_id" "$fifo"
     
     # Set up hooks for pane changes
     setup_hooks
     
     # Initial pane capture
-    "$SCRIPT_PATH" pane-change
+    local current_pane=$(tmux display-message -p '#{pane_id}')
+    set_active_pane "$session_dir" "$current_pane"
     
-    log_msg "Recording started in $full_dir"
+    log_msg "Recording started in $session_dir"
 }
 
 # Called by the entrypoint when there's a pane change
@@ -282,40 +313,15 @@ handle_pane_change() {
     # Check if directory exists
     [[ ! -d "$session_dir" ]] && exit 1
     
-    
-    # Get FIFO path
-    local fifo="$session_dir/tmux_stream.fifo"
-    local active_pane_file="$session_dir/active_pane"
-    
     # Get current active pane
     local current_pane=$(tmux display-message -p '#{pane_id}')
     
-    # JUSTIFICATION: active_pane file tracks which pane is currently being recorded
-    # This prevents duplicate captures and ensures we stop pipe-pane on the old pane
-    # before starting on the new one, avoiding FIFO conflicts
-    if [[ -f "$active_pane_file" ]]; then
-        local prev_pane=$(cat "$active_pane_file")
-        if [[ "$prev_pane" == "$current_pane" ]]; then
-            # Same pane, no change needed
-            exit 0
-        fi
-        
-        # Stop capture on previous pane
-        stop_pipe "$prev_pane"
-    fi
-    
-    # Update active pane file
-    echo "$current_pane" > "$active_pane_file"
-    
-    # Send pane info to FIFO
-    output_pane "$current_pane" > "$fifo" 2>&1
-
-    # Start capturing output
-    tmux pipe-pane -t "$current_pane" "cat > '$fifo'"
+    # Update active pane
+    set_active_pane "$session_dir" "$current_pane"
 }
 
 # Entrypoint for stopping the recording
-stop_recording() {
+handle_stop_recording() {
     # Clear hooks
     clear_hooks
     
@@ -328,15 +334,8 @@ stop_recording() {
     # Get the session directory
     local session_dir=$(get_session_dir)
     
-    # Stop any active pipe
-    # TODO: Pretty sure that cleanup_recording should handle this instead of us
-    if [[ -f "$session_dir/active_pane" ]]; then
-        local active_pane=$(cat "$session_dir/active_pane" 2>/dev/null || true)
-        stop_pipe "$active_pane"
-    fi
-    
-    # Clean up recording
-    cleanup_recording "$session_dir"
+    # Stop recording
+    stop_recording "$session_dir"
     
     log_msg "Recording stopped: $session_dir"
 }
@@ -344,7 +343,7 @@ stop_recording() {
 # Entrypoint dispatch logic
 case "$1" in
     start)
-        start_recording
+        handle_start_recording
         ;;
     pane-change)
         handle_pane_change
@@ -354,7 +353,7 @@ case "$1" in
         log_msg "Hooks cleared"
         ;;
     stop)
-        stop_recording
+        handle_stop_recording
         ;;
     *)
         echo "Usage:"
