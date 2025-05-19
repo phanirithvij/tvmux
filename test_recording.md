@@ -8,9 +8,6 @@
 ## Special Characters
 - [ ] Box drawing: `echo "┌─┐│ │└─┘"`
 
-## Terminal States
-- [ ] Bold text: `echo -e "\033[1mBold\033[0m"`
-
 ## Long Output
 - [ ] Generate lots of output: `seq 1 1000`
 - [ ] Colored output: `ls -la --color=always`
