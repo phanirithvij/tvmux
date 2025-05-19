@@ -24,12 +24,13 @@ it's not really a release.
       reboot.
 - [ ] Write a `./configure` script that checks all the things we need.
 - [ ] `make build` and `make install` to `$PREFIX`, defaulting to `~/.local/`
-- 
-
 
 ### `0.4`
 
-- [ ] Drop the fifo and actually record all the 
+- [ ] Record everything and selectively switch between buffers
+  - [ ] timestamp logs with an awk script
+- [ ] Get alternative buffers working
+- [ ] Break stuff into a library?
 
 ### `0.5`
 
