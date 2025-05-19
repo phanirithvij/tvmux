@@ -238,6 +238,9 @@ start_recording() {
     # Set up hooks for pane changes
     setup_hooks
     
+    # Send a newline to "prime" the FIFO for tail -F
+    echo "" > "$fifo"
+    
     # Initial pane capture
     "$SCRIPT_PATH" pane-change
     
@@ -282,6 +285,7 @@ handle_pane_change() {
     
     # Send pane info to FIFO
     output_pane "$current_pane" > "$fifo" 2>&1
+    output_pane "$current_pane" > "$session_dir/$(date +%s%N)"
 
     # Start capturing output
     tmux pipe-pane -t "$current_pane" "cat > '$fifo'"
