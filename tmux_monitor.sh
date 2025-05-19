@@ -10,6 +10,16 @@ log_msg() {
     echo "$@" 1>&2
 }
 
+kill_tree() {
+    local pid="$1"
+    local sig="${2:--TERM}"
+    local children=$(pgrep -P "$pid")
+    for child in $children; do
+        kill_tree "$child" "$sig"
+    done
+    kill -"$sig" "$pid" 2>/dev/null || true
+}
+
 # Function to get current tmux session ID
 get_current_session_id() {
     tmux display-message -p '#{session_id}'
@@ -107,15 +117,13 @@ cleanup_recording() {
     
     # Kill asciinema process
     local pid=$(get_asciinema_pid "$session_dir")
+
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        # Kill gracefully first
-        kill -TERM "$pid" >/dev/null 2>&1
-        # Give it a moment to finish writing
-        sleep 0.5
-        # Force kill if still running
-        kill -0 "$pid" >/dev/null 2>&1 && kill -KILL "$pid" >/dev/null 2>&1
+        kill_tree "$pid"
+        sleep 1
+        kill -0 "$pid" >/dev/null 2>&1 && kill_tree "$pid" -KILL
     fi
-    
+
     # Fix potentially truncated asciinema file
     fix_asciinema_file "$session_dir/session.cast"
     
@@ -124,12 +132,12 @@ cleanup_recording() {
     rm -f "$session_dir/recording.lock"
     rm -f "$session_dir/active_pane"
    
-    fifo="full_dir/tmux_stream.fifo"
+    fifo="$session_dir/tmux_stream.fifo"
     # Remove FIFO
     if [[ -n "$fifo" ]]; then
         # Kill any processes using the FIFO to prevent broken pipe errors
         fuser -k "$fifo" 2>/dev/null || true
-        rm -f "$fifo"
+        rm -f "$fifo" 2>/dev/null    || true
     fi
 }
 
@@ -173,7 +181,7 @@ start_asciinema_background() {
             fix_asciinema_file "$full_dir/session.cast"
             asciinema_cmd="$asciinema_cmd --append"
         fi
-        $asciinema_cmd "$full_dir/session.cast" -c "tail -F $fifo" >/dev/null 2>&1 &
+        $asciinema_cmd "$full_dir/session.cast" -c "tail -F $fifo 2>&1" &
         local asciinema_pid=$!
         echo "$asciinema_pid" > "$full_dir/asciinema_pid"
         
@@ -208,7 +216,7 @@ init_recording() {
     
     # Create FIFO
     local fifo="$full_dir/tmux_stream.fifo"
-    mkfifo "$fifo"
+    [[ ! -f "$fifo" ]] && mkfifo "$fifo"
     
     # Save session info
     echo "$session_id" > "$full_dir/session_id"
@@ -267,11 +275,10 @@ handle_pane_change() {
     echo "$current_pane" > "$active_pane_file"
     
     # Send pane info to FIFO
-    output_pane "$current_pane" > "$fifo"
-    sync
-    
+    #output_pane "$current_pane" | tee $fifo > /dev/null 2>&1
+
     # Start capturing output
-    tmux pipe-pane -t "$current_pane" "cat > /dev/null" #$fifo"
+    #tmux pipe-pane -t "$current_pane" "tee $fifo > /dev/null" > /dev/null 2>&1
 }
 
 # Stop recording for the current session
