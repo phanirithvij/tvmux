@@ -79,20 +79,29 @@ get_asciinema_pid() {
     fi
 }
 
-# Check if recording is active for session
-is_recording_active() {
-    local session_dir=$(get_session_dir)
+# Check if recording is active for session dir
+is_recording() {
+    local session_dir=${1:-$(get_session_dir)}
     
     # Check if directory exists
     [[ ! -d "$session_dir" ]] && return 1
     
     # Check if asciinema process is running
     local pid=$(get_asciinema_pid "$session_dir")
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        return 0
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
+        return 1
     fi
     
-    return 1
+    # Check if someone is reading from the FIFO
+    local fifo="$session_dir/tmux_stream.fifo"
+    [[ ! -p "$fifo" ]] && return 1
+    
+    # Check if tail process is running (since fuser might not detect FIFO readers)
+    if pgrep -f "tail -F $fifo" >/dev/null; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 # Clears the hooks that we added.
@@ -176,6 +185,15 @@ stop_recording() {
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         kill_tree "$pid"
     fi
+    
+    # Kill any lingering processes for this session's FIFO
+    local fifo="$session_dir/tmux_stream.fifo"
+    if [[ -p "$fifo" ]]; then
+        # Kill any tail processes reading from this FIFO
+        pkill -f "tail -F $fifo" || true
+        # Kill any processes using the FIFO
+        fuser -k "$fifo" 2>/dev/null || true
+    fi
 
     # Fix potentially truncated asciinema file
     fix_asciinema_file "$session_dir/session.cast"
@@ -183,12 +201,9 @@ stop_recording() {
     # Clean up files
     rm -f "$session_dir/asciinema_pid"
    
-    fifo="$session_dir/tmux_stream.fifo"
     # Remove FIFO
     if [[ -n "$fifo" ]]; then
-        # Kill any processes using the FIFO to prevent broken pipe errors
-        fuser -k "$fifo" 2>/dev/null || true
-        rm -f "$fifo" 2>/dev/null    || true
+        rm -f "$fifo" 2>/dev/null || true
     fi
 }
 
@@ -225,26 +240,48 @@ output_pane() {
     fi
 }
 
-# Run asciinema in a subshell and wreap it
-start_asciinema_background() {
+# Wait for asciinema to be ready
+wait_for_recording_ready() {
+    local session_dir="$1"
+    local max_retries="${2:-30}"  # 3 seconds default
+    local retry_delay="${3:-0.1}"
+    
+    local retries=0
+    while ((retries < max_retries)); do
+        log_msg "DEBUG: Checking recording (attempt $((retries + 1))/$max_retries)"
+        if is_recording "$session_dir"; then
+            log_msg "DEBUG: Recording is ready!"
+            return 0
+        fi
+        sleep "$retry_delay"
+        retries=$((retries + 1))
+    done
+    
+    log_msg "Warning: Recording may not be ready after ${max_retries} retries"
+    return 1
+}
+
+# Start the asciinema recording process
+start_recording_process() {
     local session_dir="$1"
     local session_id="$2"
     local fifo="$3"
     
+    # Get terminal dimensions from active pane
+    local width=$(tmux display-message -p '#{pane_width}')
+    local height=$(tmux display-message -p '#{pane_height}')
+    
+    local asciinema_cmd="asciinema rec"
+    if [[ -f "$session_dir/session.cast" ]]; then
+        # Fix potentially truncated file before appending
+        fix_asciinema_file "$session_dir/session.cast"
+        asciinema_cmd="$asciinema_cmd --append"
+    fi
+    
+    # Start the background process
     (
         # Set up exit trap for cleanup
         trap "stop_recording '$session_dir'; clear_hooks" EXIT
-        
-        # Get terminal dimensions from active pane
-        local width=$(tmux display-message -p '#{pane_width}')
-        local height=$(tmux display-message -p '#{pane_height}')
-        
-        local asciinema_cmd="asciinema rec"
-        if [[ -f "$session_dir/session.cast" ]]; then
-            # Fix potentially truncated file before appending
-            fix_asciinema_file "$session_dir/session.cast"
-            asciinema_cmd="$asciinema_cmd --append"
-        fi
         
         # The script wrapper prevents asciinema from knowing it's connected to
         # a real terminal, if we don't do this it'll echo everything back to
@@ -261,30 +298,31 @@ start_asciinema_background() {
         
         log_msg "Recording ended: $session_dir"
     ) >/dev/null 2>&1 &
+    
+    # Wait for recording to actually be ready
+    wait_for_recording_ready "$session_dir"
 }
 
 # Entrypoint for starting recording
 handle_start_recording() {
     local session_id=$(get_current_session_id)
     local session_name=$(tmux display-message -p '#{session_name}')
-    
+    local session_start=$(tmux display-message -p '#{session_created}')
+    local session_dir=$(get_session_dir)
+
     # Check if recording is already active for this session
-    if is_recording_active; then
+    if is_recording; then
         local existing_dir=$(get_session_dir)
         log_msg "Recording already active for session $session_name at $existing_dir"
         exit 0
     fi
-    
-    # Get session start time
-    local session_start=$(tmux display-message -p '#{session_created}')
-    
+
     # Create directory structure
-    local session_dir=$(get_session_dir)
     mkdir -p "$session_dir"
-    
+
     # Create FIFO
     local fifo="$session_dir/tmux_stream.fifo"
-    [[ ! -f "$fifo" ]] && mkfifo "$fifo"
+    [[ ! -p "$fifo" ]] && mkfifo "$fifo"
     
     # Store session metadata - still needed if we need to look up old recordings
     # The session_id helps us map to this directory (since ID isn't in the dir name)
@@ -292,8 +330,8 @@ handle_start_recording() {
     # Store name for display purposes only
     echo "$session_name" > "$session_dir/session_name"
     
-    # Start asciinema recording in background
-    start_asciinema_background "$session_dir" "$session_id" "$fifo"
+    # Start recording process (waits until ready)
+    start_recording_process "$session_dir" "$session_id" "$fifo"
     
     # Set up hooks for pane changes
     setup_hooks
@@ -320,19 +358,18 @@ handle_pane_change() {
 
 # Entrypoint for stopping the recording
 handle_stop_recording() {
-    # Clear hooks
+    # Get the session directory
+    local session_dir=$(get_session_dir)
+
     clear_hooks
     
-    # Check if recording is active
-    if ! is_recording_active; then
+    # Check if directory exists and has recording files
+    if [[ ! -d "$session_dir" ]] || [[ ! -f "$session_dir/asciinema_pid" ]]; then
         log_msg "No active recording for this session"
         exit 0
     fi
     
-    # Get the session directory
-    local session_dir=$(get_session_dir)
-    
-    # Stop recording
+    # Stop recording (even if processes are partially dead)
     stop_recording "$session_dir"
     
     log_msg "Recording stopped: $session_dir"
