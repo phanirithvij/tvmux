@@ -160,7 +160,8 @@ output_pane() {
     
     # Dump current pane content with escape sequences preserved
     # Capture exactly the visible area (0 to height-1)
-    tmux capture-pane -e -p -S 0 -E $((height - 2)) -t "$pane_id"
+    # Use echo -n to output without adding a newline
+    echo -n "$(tmux capture-pane -e -p -S 0 -E $((height - 1)) -t "$pane_id")"
     
     # Get cursor position (adding 1 to convert from 0-based to 1-based)
     local cursor_y=$(tmux display-message -p -t "$pane_id" '#{cursor_y}')
