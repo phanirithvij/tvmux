@@ -158,8 +158,8 @@ output_pane() {
     # Get cursor position (adding 1 to convert from 0-based to 1-based)
     local cursor_y=$(tmux display-message -p -t "$pane_id" '#{cursor_y}')
     local cursor_x=$(tmux display-message -p -t "$pane_id" '#{cursor_x}')
-    cursor_y=$((cursor_y + 1))
-    cursor_x=$((cursor_x + 1))
+    cursor_y=$((cursor_y))
+    cursor_x=$((cursor_x))
     
     # Position cursor with explicit sequence
     echo -e "\033[${cursor_y};${cursor_x}H"
@@ -181,7 +181,7 @@ start_asciinema_background() {
             fix_asciinema_file "$full_dir/session.cast"
             asciinema_cmd="$asciinema_cmd --append"
         fi
-        script -qfc "$asciinema_cmd \"$full_dir/session.cast\" -c \"tail -F $fifo 2>&1\"" /dev/null &
+        script -qfc "$asciinema_cmd \"$full_dir/session.cast\" -c \"stdbuf -o0 tail -F $fifo 2>&1\"" /dev/null &
         local asciinema_pid=$!
         echo "$asciinema_pid" > "$full_dir/asciinema_pid"
         
