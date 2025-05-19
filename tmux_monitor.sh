@@ -181,7 +181,7 @@ start_asciinema_background() {
             fix_asciinema_file "$full_dir/session.cast"
             asciinema_cmd="$asciinema_cmd --append"
         fi
-        $asciinema_cmd "$full_dir/session.cast" -c "tail -F $fifo 2>&1" &
+        script -qfc "$asciinema_cmd \"$full_dir/session.cast\" -c \"tail -F $fifo 2>&1\"" /dev/null &
         local asciinema_pid=$!
         echo "$asciinema_pid" > "$full_dir/asciinema_pid"
         
@@ -275,10 +275,10 @@ handle_pane_change() {
     echo "$current_pane" > "$active_pane_file"
     
     # Send pane info to FIFO
-    #output_pane "$current_pane" | tee $fifo > /dev/null 2>&1
+    output_pane "$current_pane" > "$fifo" 2>&1
 
     # Start capturing output
-    #tmux pipe-pane -t "$current_pane" "tee $fifo > /dev/null" > /dev/null 2>&1
+    tmux pipe-pane -t "$current_pane" "cat > '$fifo'"
 }
 
 # Stop recording for the current session
