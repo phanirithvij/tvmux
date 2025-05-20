@@ -10,7 +10,7 @@ concept of collection by recording `asciinema rec -c "tmux att"`, which ended up
 being enormous and largely irrelevant.
 
 Recording the top level is about 450MB for a day's worth of hacking in my one day
-test. This compressed to ~15MB with xz, but I don't have any idea of where the
+test. This compressed to ~8MB with xz, but I don't have any idea of where the
 window splits are, and don't trust LLM inference to infer them. As an example for
 comparison, a test window looks like this:
 
