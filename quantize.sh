@@ -240,7 +240,7 @@ main() {
     fi
     
     # Set up cleanup
-    trap cleanup EXIT INT TERM
+    shell_trap cleanup
     
     # Initialize
     setup_fifos
