@@ -87,6 +87,8 @@ tmux_get_pane() {
     width=$(tmux display-message -p -t "$pane_id" '#{pane_width}')
     height=$(tmux display-message -p -t "$pane_id" '#{pane_height}')
 
+    tvmux_set dump 1
+
     # Reset terminal state, clear screen and set terminal size
     # (attributes, scroll region, clear screen, home cursor, set size)
     printf "\033[0m\033[r\033[2J\033[H\033[8;${height};${width}t"
@@ -109,5 +111,7 @@ tmux_get_pane() {
     else
         printf "\033[?25h"  # Show cursor
     fi
+
+    tvmux_set dump 0
 }
 
