@@ -1,10 +1,5 @@
 # Terminal Recording Test Cases
 
-## Terminal Modes Tests
-- [x] Test sl (scroll region): `sl` and switch panes while it's running
-- [x] Test less: `less /etc/passwd`
-- [x] Test htop: `htop`
-
 ## Special Characters
 - [ ] Box drawing: `echo "┌─┐│ │└─┘"`
 
