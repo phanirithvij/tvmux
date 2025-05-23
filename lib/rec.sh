@@ -133,7 +133,7 @@ rec_launch() {
     # Start the background process
     (
         # Set up exit trap for cleanup
-        trap "rec_stop '$session_dir'; tmux_unhook" EXIT
+        shell_trap "rec_stop '$session_dir'; tmux_unhook"
         
         # The script wrapper prevents asciinema from knowing it's connected to
         # a real terminal, if we don't do this it'll echo everything back to
