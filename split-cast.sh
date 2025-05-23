@@ -20,57 +20,50 @@ rm -f "$OUTPUT_DIR"/*.cast  # Clean up any existing files
 echo "Splitting $INPUT_FILE into $FPS fps chunks..."
 echo "Window size: $WINDOW_SIZE seconds"
 
-# Read the header (first line)
+# Read the header
 HEADER=$(head -n1 "$INPUT_FILE")
 
-# Initialize variables
-chunk_num=1
-current_window_start=0
-current_window_end=$WINDOW_SIZE
-chunk_file=""
-
-# Process the file line by line
-while IFS= read -r line; do
-    # Skip the header line
-    if [[ "$line" == "$HEADER" ]]; then
-        continue
-    fi
+# Use awk for faster processing
+tail -n +2 "$INPUT_FILE" | awk -v header="$HEADER" -v outdir="$OUTPUT_DIR" -v window="$WINDOW_SIZE" '
+BEGIN {
+    chunk_num = 1
+    current_file = sprintf("%s/%06d.cast", outdir, chunk_num)
+    print header > current_file
+    current_window_end = window
+    lines_in_chunk = 0
+}
+{
+    # Extract timestamp (first field between brackets)
+    match($0, /^\[([0-9.]+)/, arr)
+    timestamp = arr[1]
     
-    # Extract timestamp from the line
-    # Format: [timestamp, "o", "data"]
-    timestamp=$(echo "$line" | cut -d',' -f1 | tr -d '[]' | xargs)
-    
-    # If timestamp is greater than current window end, start new chunk
-    if (( $(echo "$timestamp >= $current_window_end" | bc -l) )); then
-        # Finalize current chunk if it exists
-        if [[ -n "$chunk_file" ]] && [[ -f "$chunk_file.tmp" ]]; then
-            mv "$chunk_file.tmp" "$chunk_file"
-            echo "Created $chunk_file ($(wc -l < "$chunk_file") lines)"
-        fi
+    # Check if we need a new chunk
+    if (timestamp >= current_window_end) {
+        # Close current file
+        close(current_file)
+        if (lines_in_chunk > 0) {
+            printf "Created %s (%d events)\n", current_file, lines_in_chunk
+        }
         
-        # Calculate which window this timestamp belongs to
-        window_num=$(echo "scale=0; $timestamp / $WINDOW_SIZE" | bc -l)
-        chunk_num=$((window_num + 1))
-        current_window_start=$(echo "$window_num * $WINDOW_SIZE" | bc -l)
-        current_window_end=$(echo "($window_num + 1) * $WINDOW_SIZE" | bc -l)
+        # Calculate new chunk number based on timestamp
+        chunk_num = int(timestamp / window) + 1
+        current_window_end = chunk_num * window
         
-        # Start new chunk
-        chunk_file=$(printf "%s/%06d.cast" "$OUTPUT_DIR" "$chunk_num")
-        echo "$HEADER" > "$chunk_file.tmp"
-    fi
+        # Start new file
+        current_file = sprintf("%s/%06d.cast", outdir, chunk_num)
+        print header > current_file
+        lines_in_chunk = 0
+    }
     
     # Write line to current chunk
-    if [[ -n "$chunk_file" ]]; then
-        echo "$line" >> "$chunk_file.tmp"
-    fi
-    
-done < "$INPUT_FILE"
-
-# Finalize last chunk
-if [[ -n "$chunk_file" ]] && [[ -f "$chunk_file.tmp" ]]; then
-    mv "$chunk_file.tmp" "$chunk_file"
-    echo "Created $chunk_file ($(wc -l < "$chunk_file") lines)"
-fi
+    print $0 > current_file
+    lines_in_chunk++
+}
+END {
+    if (lines_in_chunk > 0) {
+        printf "Created %s (%d events)\n", current_file, lines_in_chunk
+    }
+}'
 
 # Summary
 total_chunks=$(ls "$OUTPUT_DIR"/*.cast 2>/dev/null | wc -l)
