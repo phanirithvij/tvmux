@@ -4,6 +4,7 @@
 BASE_DIR="${BASE_DIR:-$SCRIPT_DIR/.cache}"
 
 source $SCRIPT_DIR/lib/shell.sh
+source $SCRIPT_DIR/lib/tty.sh
 source $SCRIPT_DIR/lib/cmd.sh
 source $SCRIPT_DIR/lib/log.sh
 source $SCRIPT_DIR/lib/proc.sh
