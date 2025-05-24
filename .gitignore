@@ -1,4 +1,7 @@
-*.cast
-*.log
+.venv
+__pycache__
+.coverage
+htmlcov
+dist
+coverage.json
 .cache
-build

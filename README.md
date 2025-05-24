@@ -7,9 +7,8 @@ asciinema tmux recorder
 So I can record tmux sessions and archive my workflow, then later use them for
 AI training.
 
-# ▶️ usage
 
-Doesn't work in this branch yet!
+# LETS REWRITE IN PYTHON
 
 ## 🏗️ v0.4 Refactoring Plan
 
