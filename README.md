@@ -14,27 +14,15 @@ Doesn't work in this branch yet!
 ## 🏗️ v0.4 Refactoring Plan
 
 ### Phase 1: Core Architecture & Library Reorganization
-- [ ] **Bash version check**
-  - [x] Require bash 4.0+ in entrypoint
-  - [ ] Exit with helpful message for macOS users
 - [ ] **Library structure refactoring**
-  - [x] Merge `shell.sh` into `proc.sh` (process management)
-  - [x] Rename `lib.sh` → `init.sh` (library loader)
-  - [ ] Rename `tty.sh` → `protocol.sh` (APC protocol handling)
   - [ ] Create `fd.sh` (file descriptor management)
-  - [x] Create `args.sh` (argument parsing with env fallback)
   - [ ] Create `daemon.sh` (daemon lifecycle management)
-- [ ] **Function naming standardization**
-  - [x] Prefix all globals with `TVMUX_`
-  - [x] Rename: `handle_*` → `cmd_*` (command handlers)
-  - [ ] Rename: `tmux_get_sid` → `tmux_get_session_id`
-  - [x] Use consistent `<domain>_<action>_<object>` pattern
 
 ### Phase 2: Daemon Architecture
 - [ ] **Socket-based daemon**
-  - [ ] `tvmux_daemon_start()` - Launch daemon process
-  - [ ] `tvmux_daemon_connect()` - Connect to existing daemon
-  - [ ] `tvmux_daemon_health_check()` - Verify daemon is alive
+  - [ ] `daemon_start()` - Launch daemon process
+  - [ ] `daemon_connect()` - Connect to existing daemon
+  - [ ] `daemon_status()` - Verify daemon is alive
   - [ ] Store socket path in `tmux @TVMUX_DAEMON_SOCKET`
   - [ ] Store daemon PID in `tmux @TVMUX_DAEMON_PID`
 - [ ] **APC protocol dispatcher**
