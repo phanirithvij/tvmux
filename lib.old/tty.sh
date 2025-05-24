@@ -6,13 +6,13 @@
 tvmux_set() {
     local key="$1"
     local value="$2"
-    
+
     # Convert key to uppercase and create variable name
     local var_name="TVMUX_MODE_${key^^}"
-    
+
     # Set the variable
     declare -g "$var_name=$value"
-    
+
     # Send the APC sequence
     printf '\033_tvmux:set:%s:%s\033\\' "$key" "$value"
 }

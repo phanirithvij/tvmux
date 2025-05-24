@@ -1,91 +1,133 @@
 # 📺 `tvmux`
 
-asciinema tmux pane recorder
+asciinema tmux recorder
 
 ## ⁉️ why!?
 
-I wanted to record my terminal development workflow, so I can later summarise it
-and tune models on me programming and using TUI apps. So I did a proof of
-concept of collection by recording `asciinema rec -c "tmux att"`, which ended up
-being enormous and largely irrelevant.
-
-Recording the top level is about 450MB for a day's worth of hacking in my one day
-test. This compressed to ~8MB with xz, but I don't have any idea of where the
-window splits are, and don't trust LLM inference to infer them. As an example for
-comparison, a test window looks like this:
-
-[https://asciinema.org/a/720036](https://asciinema.org/a/720036)
-
-For my next iteration, I tried recording individual panes. Which, with lots of
-long-running jobs and monitors showing log files, ended up being ... uh... a
-pane? Not just saving window geometry and stitching it back together again, but
-some background panes had excessively large outputs. They're in the background,
-so I don't care about them.
-
-So for mk3, I made this recording tool that follows the active pane by detecting
-the pane change, dumping the contents, injecting control codes and stovepiping
-everything after it into `asciinema` via tail.
-
-The session above looks like this as I navigate, which shows exactly what I'm up
-to, far better IMO:
-
-[https://asciinema.org/a/720034](https://asciinema.org/a/720034)
+So I can record tmux sessions and archive my workflow, then later use them for
+AI training.
 
 # ▶️ usage
 
-Currently there's a release, and you can just drop that into `~/.local/bin` but
-it's really a test of the release process so is a bit flaky. For best results,
-run this from inside your tmux session:
+Doesn't work in this branch yet!
 
-```bash
-$ git clone https://github.com/bitplane/tvmux.git
-$ cd tvmux
-$ make start
-# ... some time later ...
-$ make stop
-```
+## 🏗️ v0.4 Refactoring Plan
 
-You'll see a symlink linking to the `.cast` file which will be under `./.cache`.
-There's `make` steps for build and install but without testing, who knows where
-the outputs will go (lol)
+### Phase 1: Core Architecture & Library Reorganization
+- [ ] **Bash version check**
+  - [x] Require bash 4.0+ in entrypoint
+  - [ ] Exit with helpful message for macOS users
+- [ ] **Library structure refactoring**
+  - [x] Merge `shell.sh` into `proc.sh` (process management)
+  - [x] Rename `lib.sh` → `init.sh` (library loader)
+  - [ ] Rename `tty.sh` → `protocol.sh` (APC protocol handling)
+  - [ ] Create `fd.sh` (file descriptor management)
+  - [x] Create `args.sh` (argument parsing with env fallback)
+  - [ ] Create `daemon.sh` (daemon lifecycle management)
+- [ ] **Function naming standardization**
+  - [x] Prefix all globals with `TVMUX_`
+  - [x] Rename: `handle_*` → `cmd_*` (command handlers)
+  - [ ] Rename: `tmux_get_sid` → `tmux_get_session_id`
+  - [x] Use consistent `<domain>_<action>_<object>` pattern
 
-# ⏩ What's next?
+### Phase 2: Daemon Architecture
+- [ ] **Socket-based daemon**
+  - [ ] `tvmux_daemon_start()` - Launch daemon process
+  - [ ] `tvmux_daemon_connect()` - Connect to existing daemon
+  - [ ] `tvmux_daemon_health_check()` - Verify daemon is alive
+  - [ ] Store socket path in `tmux @TVMUX_DAEMON_SOCKET`
+  - [ ] Store daemon PID in `tmux @TVMUX_DAEMON_PID`
+- [ ] **APC protocol dispatcher**
+  - [ ] Inline AWK parser for escape sequences
+  - [ ] `tvmux_apc_parser()` - Extract commands from stream
+  - [ ] Security: Command whitelisting in AWK
+  - [ ] Security: Argument sanitization
+  - [ ] Output: `prefix_function "context" "arg1" "arg2"`
+- [ ] **Multiplexed dispatcher reading**
+  - [ ] Round-robin reading from multiple AWK parsers
+  - [ ] Non-blocking reads with timeout
+  - [ ] Dynamic dispatcher spawn/teardown
 
+### Phase 3: Hook & State Management
+- [ ] **Tmux hook stacking**
+  - [ ] `tmux_hook_add()` - Add handler without overwriting
+  - [ ] `tmux_hook_remove()` - Remove specific handler
+  - [ ] `tmux_hook_wrap()` - Wrap existing hooks
+  - [ ] Daemon maintains hook handler registry
+  - [ ] Self-healing hooks (check on each trigger)
+- [ ] **FD-based pipeline management**
+  - [ ] Replace FIFOs with file descriptors
+  - [ ] `tvmux_fd_open_pipe()` - Create pipe with FDs
+  - [ ] `tvmux_fd_connect()` - Connect to socket
+  - [ ] `tvmux_fd_route()` - Route data between FDs
+  - [ ] Store FDs in associative arrays
+- [ ] **Configuration system**
+  - [ ] `tvmux_args_define()` - Define command arguments
+  - [ ] `tvmux_args_parse()` - Parse with precedence
+  - [ ] Precedence: defaults < env < config < CLI
+  - [ ] Environment vars: `TVMUX_COMMAND_ARGNAME`
+  - [ ] No `.env` files (use tmux environment)
+
+### Phase 4: Remote Deployment & Multi-Instance
+- [ ] **Self-deployment to tmux server**
+  - [ ] `tvmux_deploy_check()` - Check deployment version
+  - [ ] `tvmux_deploy_transfer()` - Transfer script via tmux
+  - [ ] `tvmux_deploy_execute()` - Run on tmux server host
+  - [ ] Hash comparison for version management
+  - [ ] Refuse to run if versions conflict
+- [ ] **Per-tmux-server instances**
+  - [ ] Socket naming: `/tmp/tvmux.$USER/daemon.$TMUX_PID.sock`
+  - [ ] One daemon per tmux server
+  - [ ] Clean shutdown on tmux server exit
+
+### Phase 5: Per-Window Recording (Building on new architecture)
 - [ ] Recording per window/project
   - [x] Window recording status indicator
     - [ ] Change to pause indicator when recording but not active
-  - [ ] 
-- [ ] Tracking / dumping state
-  - [x] Cursor position
-  - [ ] Scrollback buffer
-   - [ ] Scroll position
-   - [ ] Highlight/selection
-  - [ ] Alternative buffer tracking
-  - [ ] Geometry
-    - [x] Terminal size
-    - [ ] Pane position + details
-- [ ] Application specific escape codes
-  - [x] set for variables
-  - [ ] Terminal geometry
-  - [ ] Timestamping
-  - [ ] Investigate 
-- [ ] Reduce file size
-  - [ ] Phase 1: Measure and fix FPS
-  - [ ] Remove alt buffer + scrollback when not used 
-- [ ] Config files, env vars and args via a bash library.
-- [ ] Exporting to various formats
-  - [ ] MP4
-    - [ ] Integrate sh2mp4 (combine?)
-  - [ ] GIF - use `agg`
-- [ ] Keep using it and adding turd polish!
-  - [ ] Fix recording paths
-  - [ ] Docs
-     - [ ] Make docs publish to bitplane.net
-     - [ ] Manpage install
-  - [ ] Allow sourcing lib.sh from other dirs
-  - [ ] Allow graceful continuation of recording
-  - [ ] First bytes bug again :/
-  - [ ] Nesting hooks?
+  - [ ] **Window-based pipelines**
+    - [ ] One asciinema process per window
+    - [ ] Window ID → pipeline FD mapping
+    - [ ] Dynamic pipeline creation/destruction
+  - [ ] **File naming & organization**
+    - [ ] Base: `~/Videos/tmux/YYYY-MM/`
+    - [ ] Files: `YYYY-MM-DD_HHMM_sessionid_windowid.cast`
+    - [ ] Symlinks: `YYYY-MM-DD_HHMM_sessionname_windowname.cast`
+    - [ ] Update symlinks on window rename
+  - [ ] **Window lifecycle integration**
+    - [ ] Hook: `window-renamed` → update symlinks
+    - [ ] Hook: `window-unlinked` → stop recording
+    - [ ] Hook: `pane-died` → check if window empty
+
+### Phase 6: Advanced Pipeline Features
+- [ ] **Pipeline architecture**
+  - [ ] Stage management in daemon
+  - [ ] Pluggable pipeline stages
+  - [ ] Built-in stages: quantizer, compressor
+- [ ] **State tracking for all panes**
+  - [ ] Lightweight monitoring mode
+  - [ ] Track cursor, screen mode, colors
+  - [ ] Materialize full state on demand
+  - [ ] Switch monitoring → recording seamlessly
+
+### Phase 7: Future Enhancements
+- [ ] **Advanced state tracking**
+  - [ ] Scrollback buffer position
+  - [ ] Selection/highlights
+  - [ ] Alternative buffer snapshots
+  - [ ] Pane geometry tracking
+- [ ] **File size optimization**
+  - [ ] Quantizer integration
+  - [ ] Remove redundant escape sequences
+  - [ ] Compress during recording
+- [ ] **Export formats**
+  - [ ] MP4 generation
+  - [ ] GIF export
+  - [ ] Timeline scrubbing
+- [ ] **Quality of life**
+  - [ ] Graceful recording resume
+  - [ ] Better error messages
+  - [ ] Man page generation
+  - [ ] Web UI for playback
 
 ## 🔗 links
 
@@ -96,4 +138,3 @@ the outputs will go (lol)
 
 * [📺 asciinema](https://asciinema.org/)
 * [🪟 textual](https://textualize.io/)
-

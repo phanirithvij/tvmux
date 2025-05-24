@@ -8,7 +8,7 @@
 rec_get_pid() {
     local session_dir="$1"
     local pid_file="$session_dir/asciinema_pid"
-    
+
     if [[ -f "$pid_file" ]]; then
         cat "$pid_file" 2>/dev/null || true
     fi
@@ -17,20 +17,20 @@ rec_get_pid() {
 # Check if recording is active for session dir
 rec_is_active() {
     local session_dir=${1:-$(tmux_get_session_dir)}
-    
+
     # Check if directory exists
     [[ ! -d "$session_dir" ]] && return 1
-    
+
     # Check if asciinema process is running
     local pid=$(rec_get_pid "$session_dir")
     if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then
         return 1
     fi
-    
+
     # Check if someone is reading from the FIFO
     local fifo="$session_dir/tmux_stream.fifo"
     [[ ! -p "$fifo" ]] && return 1
-    
+
     # Check if tail process is running (since fuser might not detect FIFO readers)
     if pgrep -f "tail -F $fifo" >/dev/null; then
         return 0
@@ -44,13 +44,13 @@ rec_is_active() {
 # on the final line. If that was the case, this will repair it.
 rec_fix_cast() {
     local cast_file="$1"
-    
+
     # No changes needed?
     [[ ! -f "$cast_file" ]] && return 0
     if tail -n1 "$cast_file" | grep -q '\]$'; then
         return 0
     fi
-    
+
     # Repair the file
     local temp_file="${cast_file}.tmp"
     head -n -1 "$cast_file" > "$temp_file"
@@ -60,17 +60,17 @@ rec_fix_cast() {
 # Stop recording and clean up all resources
 rec_stop() {
     local session_dir="$1"
-    
+
     # Stop the active pane recording
     tmux_pane_activate "$session_dir" ""
-    
+
     # Kill asciinema process
     local pid=$(rec_get_pid "$session_dir")
-    
+
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
         proc_kill "$pid"
     fi
-    
+
     # Kill any lingering processes for this session's FIFO
     local fifo="$session_dir/tmux_stream.fifo"
     if [[ -p "$fifo" ]]; then
@@ -82,13 +82,13 @@ rec_stop() {
 
     # Fix potentially truncated asciinema file
     rec_fix_cast "$session_dir/session.cast"
-    
+
     # Clear the recording indicator
     rec_indicator_set 0
-    
+
     # Clean up files
     rm -f "$session_dir/asciinema_pid"
-   
+
     # Remove FIFO
     if [[ -n "$fifo" ]]; then
         rm -f "$fifo" 2>/dev/null || true
@@ -100,7 +100,7 @@ rec_wait_ready() {
     local session_dir="$1"
     local max_retries="${2:-30}"  # 3 seconds default
     local retry_delay="${3:-0.1}"
-    
+
     local retries=0
     while ((retries < max_retries)); do
         log_debug "Checking recording (attempt $((retries + 1))/$max_retries)"
@@ -111,7 +111,7 @@ rec_wait_ready() {
         sleep "$retry_delay"
         retries=$((retries + 1))
     done
-    
+
     log_warn "Recording may not be ready after ${max_retries} retries"
     return 1
 }
@@ -120,7 +120,7 @@ rec_wait_ready() {
 rec_indicator_set() {
     local recording="$1"
     local window_id="${2:-$(tmux display-message -p '#{window_id}')}"
-    
+
     if [[ "$recording" == "1" ]]; then
         # Mark this window as recording with the indicator
         tmux set -w -t "$window_id" @recording_indicator " #[fg=red,blink]⏺#[default]"
@@ -128,7 +128,7 @@ rec_indicator_set() {
         # Clear recording marker for this window
         tmux set -wu -t "$window_id" @recording_indicator
     fi
-    
+
     # Update window status formats to show recording indicator after window flags
     tmux set -g window-status-format '#I:#W#{?window_flags,#{window_flags}, }#{@recording_indicator}'
     tmux set -g window-status-current-format '#I:#W#{?window_flags,#{window_flags}, }#{@recording_indicator}'
@@ -139,23 +139,23 @@ rec_launch() {
     local session_dir="$1"
     local session_id="$2"
     local fifo="$3"
-    
+
     # Get terminal dimensions from active pane
     local width=$(tmux display-message -p '#{pane_width}')
     local height=$(tmux display-message -p '#{pane_height}')
-    
+
     local asciinema_cmd="asciinema rec"
     if [[ -f "$session_dir/session.cast" ]]; then
         # Fix potentially truncated file before appending
         rec_fix_cast "$session_dir/session.cast"
         asciinema_cmd="$asciinema_cmd --append"
     fi
-    
+
     # Start the background process
     (
         # Set up exit trap for cleanup
         shell_trap "rec_stop '$session_dir'; tmux_unhook"
-        
+
         # The script wrapper prevents asciinema from knowing it's connected to
         # a real terminal, if we don't do this it'll echo everything back to
         # our terminal. We need to do stty inside script so the correct .cast
@@ -168,13 +168,13 @@ rec_launch() {
         while tmux has-session -t "$session_id" 2>/dev/null && kill -0 "$asciinema_pid" 2>/dev/null; do
             sleep 1
         done
-        
+
         log_info "Recording ended: $session_dir"
     ) >/dev/null 2>&1 &
-    
+
     # Wait for recording to actually be ready
     rec_wait_ready "$session_dir"
-    
+
     # Set the recording indicator
     rec_indicator_set 1
 }

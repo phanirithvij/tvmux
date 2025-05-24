@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Command dispatch  
+# Command dispatch
 #
 
 # Command handlers - these will be properly renamed once reorganized
@@ -22,10 +22,10 @@ cmd_status() {
     local session_name=$(tmux display-message -p '#{session_name}')
     local session_dir=$(tmux_get_session_dir)
     local cast_file="$session_dir/session.cast"
-    
+
     echo "Session: $session_name"
     echo "Directory: $session_dir"
-    
+
     # Check recording status (less strict than is_recording)
     local recording_status="NOT RECORDING"
     if [[ -d "$session_dir" ]]; then
@@ -35,7 +35,7 @@ cmd_status() {
         fi
     fi
     echo "Status: $recording_status"
-    
+
     #
     # TODO: none of your fucking business.
     #
@@ -45,7 +45,7 @@ cmd_status() {
         # Get file size in human readable format
         local size=$(du -h "$cast_file" | cut -f1)
         echo "Cast file size: $size"
-        
+
         # Get duration from last timestamp
         local duration=$(tail -n1 "$cast_file" | cut -d',' -f1 | cut -d'[' -f2)
         if [[ -n "$duration" ]]; then
@@ -60,7 +60,7 @@ cmd_status() {
     else
         echo "Cast file: not found"
     fi
-    
+
     # Debug info if not recording
     if [[ "$recording_status" == "NOT RECORDING" ]] && [[ -d "$session_dir" ]]; then
         echo ""

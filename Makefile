@@ -43,8 +43,8 @@ clean: ## Remove cache/temporary files (including current recording)
 
 # Test target depends on all test files and the runner script
 test: ## Run all tests
-test: $(TEST_FILES) tests/run_all.sh
-	@tests/run_all.sh
+test: $(TEST_FILES) tests/run.sh
+	@tests/run.sh
 
 # Build target - concatenate all sources into a single script
 build: ## Build standalone script
@@ -55,14 +55,7 @@ install: $(PREFIX)/bin/$(NAME)
 
 $(BUILT_SCRIPT): $(SCRIPT) lib/*.sh
 	@echo "Building $(NAME)..."
-	@mkdir -p build
-	@# Use bash debug tracing to output everything, then filter out shebangs and source lines
-	@echo "#!/bin/bash" > $(BUILT_SCRIPT)
-	@echo "" >> $(BUILT_SCRIPT)
-	@PS4="8======D ~ ~ ~ ~" bash -xv -c 'source $(SCRIPT)' 2>&1 | \
-	  grep -v "8======D ~ ~ ~ ~" | grep -Ev '^(#|source )' >> $(BUILT_SCRIPT)
-	@chmod +x $(BUILT_SCRIPT)
-	@echo "Built $(BUILT_SCRIPT)"
+	@./tvmux.sh build $@
 
 $(PREFIX)/bin/$(NAME): $(BUILT_SCRIPT)
 	@echo "Installing $(NAME) to $(PREFIX)/bin"

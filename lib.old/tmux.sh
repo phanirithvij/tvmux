@@ -6,7 +6,7 @@
 
 #
 # TODO: give these sane names.
-# 
+#
 # example: get_current_session_id -> tmux_get_sid
 #
 
@@ -24,7 +24,7 @@ tmux_get_sid() {
 tmux_get_session_dir() {
     local session_start=$(tmux display-message -p '#{session_created}')
     local session_name=$(tmux display-message -p '#{session_name}')
-    
+
     local session_dir=$(date -d "@$session_start" +%Y-%m/%Y%m%d_%H%M%S_$session_name)
     echo "$BASE_DIR/$session_dir"
 }
@@ -53,7 +53,7 @@ tmux_pane_activate() {
     local pane_id="$2"
     local active_pane_file="$session_dir/active_pane"
     local fifo="$session_dir/tmux_stream.fifo"
-    
+
     # Check if this is the same pane
     if [[ -f "$active_pane_file" ]]; then
         local prev_pane=$(cat "$active_pane_file")
@@ -64,12 +64,12 @@ tmux_pane_activate() {
         # Stop previous pane
         [[ -n "$prev_pane" ]] && tmux_unpipe "$prev_pane"
     fi
-    
+
     # Set new active pane (none pauses recording)
     if [[ -n "$pane_id" ]]; then
         # Output current pane state
         tmux_get_pane "$pane_id" >> "$fifo" 2>&1
-        
+
         echo "$pane_id" > "$active_pane_file"
         # Start capturing output
         tmux pipe-pane -t "$pane_id" "cat >> '$fifo'"
@@ -114,4 +114,3 @@ tmux_get_pane() {
 
     tvmux_set dump 0
 }
-
