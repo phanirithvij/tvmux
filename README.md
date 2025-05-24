@@ -49,16 +49,51 @@ You'll see a symlink linking to the `.cast` file which will be under `./.cache`.
 There's `make` steps for build and install but without testing, who knows where
 the outputs will go (lol)
 
-# What's next?
+# ⏩ What's next?
 
-- [ ] Per-project recording, which in my use-case is a per-window thing.
-- [ ] Restoring alternative terminal buffers between switches
-- [ ] Quantizing the data going in because they're often too large. 
+- [ ] Recording per window/project
+  - [x] Window recording status indicator
+    - [ ] Change to pause indicator when recording but not active
+  - [ ] 
+- [ ] Tracking / dumping state
+  - [x] Cursor position
+  - [ ] Scrollback buffer
+   - [ ] Scroll position
+   - [ ] Highlight/selection
+  - [ ] Alternative buffer tracking
+  - [ ] Geometry
+    - [x] Terminal size
+    - [ ] Pane position + details
+- [ ] Application specific escape codes
+  - [x] set for variables
+  - [ ] Terminal geometry
+  - [ ] Timestamping
+  - [ ] Investigate 
+- [ ] Reduce file size
+  - [ ] Phase 1: Measure and fix FPS
+  - [ ] Remove alt buffer + scrollback when not used 
 - [ ] Config files, env vars and args via a bash library.
-- [ ]  Keep using it and adding turd polish!
+- [ ] Exporting to various formats
+  - [ ] MP4
+    - [ ] Integrate sh2mp4 (combine?)
+  - [ ] GIF - use `agg`
+- [ ] Keep using it and adding turd polish!
+  - [ ] Fix recording paths
+  - [ ] Docs
+     - [ ] Make docs publish to bitplane.net
+     - [ ] Manpage install
+  - [ ] Allow sourcing lib.sh from other dirs
+  - [ ] Allow graceful continuation of recording
+  - [ ] First bytes bug again :/
+  - [ ] Nesting hooks?
 
 ## 🔗 links
 
 * [🏠 home](https://bitplane.net/dev/sh/tvmux)
 * [🐱 github](https://github.com/bitplane/tvmux)
+
+### 🌍 awesome projects
+
+* [📺 asciinema](https://asciinema.org/)
+* [🪟 textual](https://textualize.io/)
 
