@@ -83,6 +83,9 @@ rec_stop() {
     # Fix potentially truncated asciinema file
     rec_fix_cast "$session_dir/session.cast"
     
+    # Clear the recording indicator
+    rec_indicator_set 0
+    
     # Clean up files
     rm -f "$session_dir/asciinema_pid"
    
@@ -111,6 +114,24 @@ rec_wait_ready() {
     
     log_warn "Recording may not be ready after ${max_retries} retries"
     return 1
+}
+
+# Set or clear the recording indicator for a window
+rec_indicator_set() {
+    local recording="$1"
+    local window_id="${2:-$(tmux display-message -p '#{window_id}')}"
+    
+    if [[ "$recording" == "1" ]]; then
+        # Mark this window as recording with the indicator
+        tmux set -w -t "$window_id" @recording_indicator " #[fg=red,blink]⏺#[default]"
+    else
+        # Clear recording marker for this window
+        tmux set -wu -t "$window_id" @recording_indicator
+    fi
+    
+    # Update window status formats to show recording indicator after window flags
+    tmux set -g window-status-format '#I:#W#{?window_flags,#{window_flags}, }#{@recording_indicator}'
+    tmux set -g window-status-current-format '#I:#W#{?window_flags,#{window_flags}, }#{@recording_indicator}'
 }
 
 # Start the asciinema recording process
@@ -153,4 +174,7 @@ rec_launch() {
     
     # Wait for recording to actually be ready
     rec_wait_ready "$session_dir"
+    
+    # Set the recording indicator
+    rec_indicator_set 1
 }
