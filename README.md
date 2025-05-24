@@ -16,15 +16,14 @@ Doesn't work in this branch yet!
 ### Phase 1: Core Architecture & Library Reorganization
 - [ ] **Library structure refactoring**
   - [ ] Create `fd.sh` (file descriptor management)
-  - [ ] Create `daemon.sh` (daemon lifecycle management)
+  - [x] Create `lib_daemon.sh` (daemon lifecycle management)
 
 ### Phase 2: Daemon Architecture
 - [ ] **Socket-based daemon**
-  - [ ] `daemon_start()` - Launch daemon process
-  - [ ] `daemon_connect()` - Connect to existing daemon
+  - [x] `daemon_start()` - Launch daemon process
   - [ ] `daemon_status()` - Verify daemon is alive
-  - [ ] Store socket path in `tmux @TVMUX_DAEMON_SOCKET`
-  - [ ] Store daemon PID in `tmux @TVMUX_DAEMON_PID`
+  - [x] Store socket path in `tmux @TVMUX_DAEMON_SOCKET`
+  - [x] Store daemon PID in `tmux @TVMUX_DAEMON_PID`
 - [ ] **APC protocol dispatcher**
   - [ ] Inline AWK parser for escape sequences
   - [ ] `tvmux_apc_parser()` - Extract commands from stream
@@ -116,6 +115,13 @@ Doesn't work in this branch yet!
   - [ ] Better error messages
   - [ ] Man page generation
   - [ ] Web UI for playback
+
+### Future
+
+- [ ] Running by piping into a session. `tvmux remote` ought to work if we cat
+      the script (build) into a buffer, add an entrypoint, then dump and execute
+      with bash.
+
 
 ## 🔗 links
 
