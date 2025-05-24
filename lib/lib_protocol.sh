@@ -3,7 +3,7 @@
 # Format: ESC_tvmux:set:key:value ESC\
 
 # Send a tvmux APC command and set the variable
-tvmux_set() {
+protocol_set() {
     local key="$1"
     local value="$2"
 
