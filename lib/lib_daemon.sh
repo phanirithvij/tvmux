@@ -71,7 +71,10 @@ daemon_loop() {
 
 daemon_start() {
     local loop_cmd="${1:-daemon_loop}"
-    local socket_path="/tmp/tvmux.$USER/daemon.$$.sock"
+    # Get tmux server PID for socket naming
+    local tmux_pid
+    tmux_pid=$(tmux display-message -p '#{pid}')
+    local socket_path="/tmp/tvmux.$USER/daemon.${tmux_pid}.sock"
 
     # Run loop command (real or test)
     $loop_cmd "$socket_path" | while IFS=: read -r fid cmd args; do
@@ -83,6 +86,22 @@ daemon_start() {
     done &
 
     local daemon_pid=$!
+
+    # Wait for socket to be ready
+    local attempts=0
+    while [[ ! -S "$socket_path" ]]; do
+        if ! kill -0 "$daemon_pid" 2>/dev/null; then
+            log_error "Daemon failed to start"
+            return 1
+        fi
+        if (( ++attempts > 50 )); then  # 5 seconds max
+            log_error "Daemon socket not created after 5 seconds"
+            proc_kill "$daemon_pid"
+            return 1
+        fi
+        sleep 0.1
+    done
+
     tmux set-environment TVMUX_DAEMON_PID "$daemon_pid"
     tmux set-environment TVMUX_DAEMON_SOCKET "$socket_path"
 
@@ -123,11 +142,49 @@ daemon_get_socket() {
     return 1
 }
 
-# Example daemon command handlers
+# Perl client to send command to daemon socket
+DAEMON_PERL_CLIENT='
+use IO::Socket::UNIX;
+my ($socket_path, $command) = @ARGV;
+my $socket = IO::Socket::UNIX->new(
+    Type => SOCK_STREAM,
+    Peer => $socket_path,
+) or die "Cannot connect to $socket_path: $!\n";
+print $socket "$command\n";
+while (my $line = <$socket>) {
+    print $line;
+}
+close($socket);
+'
+
+daemon_send() {
+    local socket_path
+    socket_path=$(daemon_get_socket) || {
+        log_error "No daemon running"
+        return 1
+    }
+
+    local command="$*"
+
+    # Send command to daemon socket and get response
+    perl -e "$DAEMON_PERL_USE $DAEMON_PERL_CLIENT" "$socket_path" "$command"
+}
+
+# Daemon command handlers
 daemon_on_status() {
     echo "running"
 }
 
 daemon_on_echo() {
     echo "$*"
+}
+
+daemon_on_record() {
+    local target="$1"
+    # For now, just acknowledge the recording request
+    # TODO: Actually start asciinema recording for the target
+    echo "Recording started for $target"
+
+    # Store recording state in tmux environment
+    tmux set-environment "TVMUX_RECORDING_$target" "active"
 }
