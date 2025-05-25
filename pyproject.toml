@@ -9,7 +9,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 dependencies = [
-    "click"
+    "click~=8.2",
+    "pydantic~=2.11",
+    "fastapi~=0.109",
+    "uvicorn~=0.27",
+    "httpx~=0.25"
 ]
 
 [project.optional-dependencies]
@@ -35,4 +39,4 @@ target-version = "py310"
 docstring-code-format = true
 
 [project.scripts]
-catvox = "tvmux:main.main"
+tvmux = "tvmux.cli:cli"
