@@ -1,7 +1,9 @@
 """FastAPI server that manages tmux connections."""
 import asyncio
 import os
+import signal
 import subprocess
+import sys
 from fastapi import FastAPI
 
 from .state import server_dir, terminals, SERVER_HOST, SERVER_PORT
@@ -21,6 +23,9 @@ async def startup():
     server_dir.mkdir(exist_ok=True)
     # Write PID file
     (server_dir / "server.pid").write_text(str(os.getpid()))
+
+    # Clean up any existing hooks first (in case of previous crash)
+    callback.remove_tmux_hooks()
 
     # Set up tmux hooks to call our callbacks
     callback.setup_tmux_hooks()
@@ -54,11 +59,31 @@ async def root():
 
 
 
+def cleanup_and_exit(signum=None, frame=None):
+    """Clean up and exit gracefully."""
+    print("\nCleaning up...")
+    # Remove tmux hooks
+    callback.remove_tmux_hooks()
+    # Remove PID file
+    (server_dir / "server.pid").unlink(missing_ok=True)
+    sys.exit(0)
+
+
 def run_server():
     """Run the server on HTTP port."""
     import uvicorn
 
-    uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, cleanup_and_exit)
+    signal.signal(signal.SIGTERM, cleanup_and_exit)
+
+    try:
+        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
+    except KeyboardInterrupt:
+        cleanup_and_exit()
+    finally:
+        # Ensure cleanup happens even on unexpected exits
+        cleanup_and_exit()
 
 
 if __name__ == "__main__":
