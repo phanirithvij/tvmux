@@ -2,6 +2,7 @@
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from .position import Position
 
 
 class Session(BaseModel):
@@ -11,5 +12,5 @@ class Session(BaseModel):
     id: str = Field(..., description="Session ID (e.g. $0)")
     created: int = Field(..., description="Session creation time (unix timestamp)")
     attached: bool = Field(False, description="Is session attached")
-    size: str = Field(..., description="Session size (width x height)")
+    size: Position = Field(..., description="Session size")
     windows: int = Field(0, description="Number of windows")

@@ -1,5 +1,6 @@
 """Window model for tvmux."""
 from pydantic import BaseModel, Field
+from .position import Position
 
 
 class Window(BaseModel):
@@ -9,5 +10,5 @@ class Window(BaseModel):
     name: str = Field(..., description="Window name")
     active: bool = Field(False, description="Is active window")
     panes: int = Field(1, description="Number of panes")
-    size: str = Field(..., description="Window size (width x height)")
+    size: Position = Field(..., description="Window size")
     layout: str = Field(..., description="Window layout")

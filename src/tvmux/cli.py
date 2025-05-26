@@ -17,9 +17,7 @@ def start():
     """Start the tvmux server."""
     conn = Connection()
     if conn.start():
-        click.echo("Server running")
-        click.echo(f"Socket: {conn.socket_path}")
-        click.echo(f"Use 'socat TCP-LISTEN:8080,fork UNIX-CONNECT:{conn.socket_path}' to expose to browser")
+        click.echo(f"Server running at {conn.base_url}")
     else:
         click.echo("Failed to start server", err=True)
         raise click.Abort()
@@ -41,14 +39,32 @@ def status():
     """Check server status."""
     conn = Connection()
     if conn.is_running:
-        click.echo(f"Server running (PID: {conn.server_pid})")
+        click.echo(f"Server running at {conn.base_url} (PID: {conn.server_pid})")
 
-        # Query server status
+        # Query server status using the API client
         try:
-            with conn.client() as client:
-                resp = client.get("/")
-                data = resp.json()
-                click.echo(f"Terminals: {data['terminals']}")
+            api = conn.api()
+
+            # Get basic info
+            data = api.get("/").json()
+
+            # Get sessions
+            sessions = api.get("/session/").json()
+
+            # Get windows
+            windows = api.get("/window/").json()
+
+            # Count total panes
+            total_panes = 0
+            for window in windows:
+                panes = api.get(f"/window/{window['id']}/pane").json()
+                total_panes += len(panes)
+
+            click.echo(f"\nSessions: {len(sessions)}")
+            click.echo(f"Windows: {len(windows)}")
+            click.echo(f"Panes: {total_panes}")
+            click.echo(f"Terminal trackers: {data['terminals']}")
+
         except Exception as e:
             click.echo(f"Error querying server: {e}", err=True)
     else:

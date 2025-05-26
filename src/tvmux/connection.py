@@ -13,10 +13,14 @@ class Connection:
 
     def __init__(self):
         """Initialize connection."""
+        from .server.state import SERVER_HOST, SERVER_PORT
+
         self.user = os.getenv("USER", "nobody")
         self.server_dir = Path(f"/tmp/tvmux-{self.user}")
         self.pid_file = self.server_dir / "server.pid"
-        self.socket_path = self.server_dir / "control.sock"
+        self.server_host = SERVER_HOST
+        self.server_port = SERVER_PORT
+        self.base_url = f"http://{SERVER_HOST}:{SERVER_PORT}"
 
     @property
     def server_pid(self) -> Optional[int]:
@@ -34,7 +38,15 @@ class Connection:
     @property
     def is_running(self) -> bool:
         """Check if server is running."""
-        return self.server_pid is not None and self.socket_path.exists()
+        if self.server_pid is None:
+            return False
+
+        # Try to connect to the server
+        try:
+            response = httpx.get(f"{self.base_url}/", timeout=1.0)
+            return response.status_code == 200
+        except:
+            return False
 
     def start(self) -> bool:
         """Start the server."""
@@ -47,7 +59,7 @@ class Connection:
 
         # Start server in background
         subprocess.Popen(
-            ["python", "-m", "tvmux.server"],
+            ["python", "-m", "tvmux.server.main"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True
@@ -96,17 +108,24 @@ class Connection:
             return False
 
     def client(self) -> httpx.Client:
-        """Get HTTP client connected to server socket."""
+        """Get HTTP client connected to server."""
         if not self.is_running:
             raise RuntimeError("Server not running")
 
-        transport = httpx.HTTPTransport(uds=str(self.socket_path))
-        return httpx.Client(transport=transport, base_url="http://localhost")
+        return httpx.Client(base_url=self.base_url)
 
     async def async_client(self) -> httpx.AsyncClient:
-        """Get async HTTP client connected to server socket."""
+        """Get async HTTP client connected to server."""
         if not self.is_running:
             raise RuntimeError("Server not running")
 
-        transport = httpx.AsyncHTTPTransport(uds=str(self.socket_path))
-        return httpx.AsyncClient(transport=transport, base_url="http://localhost")
+        return httpx.AsyncClient(base_url=self.base_url)
+
+    def api(self):
+        """Get API client with typed methods matching the server routes."""
+        if not self.is_running:
+            raise RuntimeError("Server not running")
+
+        # Just return the httpx client - we'll use it directly with the API
+        # The TestClient doesn't actually give us Python methods, it's still HTTP
+        return self.client()
