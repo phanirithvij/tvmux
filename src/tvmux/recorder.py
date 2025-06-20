@@ -138,6 +138,30 @@ class WindowRecorder:
         if self.state.active_pane:
             self._stop_streaming(self.state.active_pane)
 
+        # Send terminal reset sequence to ensure clean ending
+        if self.state.fifo_path.exists():
+            try:
+                with open(self.state.fifo_path, "w") as f:
+                    # Reset terminal to sane state
+                    # - Clear any partial escape sequences
+                    # - Reset colors and attributes
+                    # - Show cursor
+                    # - Reset character set
+                    # - Clear scrolling region
+                    f.write("\033[0m")     # Reset all attributes
+                    f.write("\033[?25h")   # Show cursor
+                    f.write("\033[2J")     # Clear screen
+                    f.write("\033[H")      # Home cursor
+                    f.write("\017")        # Reset character set (SI)
+                    f.write("\033[r")      # Reset scrolling region
+                    f.write("\n")          # Final newline
+            except Exception as e:
+                logger.warning(f"Failed to write terminal reset: {e}")
+
+        # Small delay to ensure reset sequences are processed
+        import time
+        time.sleep(0.1)
+
         # Kill asciinema process
         if self.state.asciinema_pid:
             try:

@@ -1,18 +1,27 @@
 """Callback endpoints for tmux hooks."""
+import json
+import shlex
 import subprocess
-from fastapi import APIRouter
+import uuid
+from datetime import datetime
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from ..state import recorders, SERVER_HOST, SERVER_PORT
 
 router = APIRouter()
 
+# In-memory storage for callback events (could be replaced with DB)
+callback_history: List[Dict] = []
 
-class HookEvent(BaseModel):
+
+class CallbackEvent(BaseModel):
     """Event data from tmux hooks."""
+    hook_name: str
     pane_id: Optional[str] = None
     session_name: Optional[str] = None
+    window_name: Optional[str] = None
     window_id: Optional[str] = None
     window_index: Optional[int] = None
     pane_index: Optional[int] = None
@@ -21,69 +30,109 @@ class HookEvent(BaseModel):
     extra: Dict[str, Any] = {}
 
 
-@router.post("/{hook_name}")
-async def handle_callback(hook_name: str, event: HookEvent):
-    """Handle callbacks from tmux hooks."""
+class CallbackEventResponse(BaseModel):
+    """Response for callback events."""
+    id: str
+    timestamp: datetime
+    event: CallbackEvent
+    status: str
+    action: str
+
+
+class HookConfig(BaseModel):
+    """Configuration for a tmux hook."""
+    name: str
+    enabled: bool = True
+    description: Optional[str] = None
+
+
+@router.get("/")
+async def list_callbacks() -> List[CallbackEventResponse]:
+    """List recent callback events."""
+    return callback_history[-50:]  # Return last 50 events
+
+
+@router.post("/")
+async def create_callback(event: CallbackEvent) -> CallbackEventResponse:
+    """Create a new callback event (called by tmux hooks)."""
+    event_id = str(uuid.uuid4())
+    timestamp = datetime.now()
+
+    # Process the callback event
+    status = "ok"
+    action = await _process_callback_event(event)
+
+    # Store in history
+    response = CallbackEventResponse(
+        id=event_id,
+        timestamp=timestamp,
+        event=event,
+        status=status,
+        action=action
+    )
+    callback_history.append(response)
+
+    # Keep only last 100 events
+    if len(callback_history) > 100:
+        callback_history.pop(0)
+
+    return response
+
+
+@router.get("/{event_id}")
+async def get_callback(event_id: str) -> CallbackEventResponse:
+    """Get a specific callback event."""
+    for event in callback_history:
+        if event.id == event_id:
+            return event
+    raise HTTPException(status_code=404, detail="Callback event not found")
+
+
+@router.delete("/{event_id}")
+async def delete_callback(event_id: str) -> Dict[str, str]:
+    """Remove a callback event from history."""
+    for i, event in enumerate(callback_history):
+        if event.id == event_id:
+            callback_history.pop(i)
+            return {"status": "deleted"}
+    raise HTTPException(status_code=404, detail="Callback event not found")
+
+
+async def _process_callback_event(event: CallbackEvent) -> str:
+    """Process a callback event and return the action taken."""
+    hook_name = event.hook_name
 
     if hook_name == "after-new-session":
-        # New session created
-        return {"status": "ok", "action": "session_created"}
-
+        return "session_created"
     elif hook_name == "after-new-window":
-        # New window created - ready for recording
-        return {"status": "ok", "action": "window_created"}
-
+        return "window_created"
     elif hook_name == "after-split-window":
-        # New pane created - no action needed (we track windows, not panes)
-        return {"status": "ok", "action": "pane_created"}
-
-    elif hook_name == "pane-died":
-        # Pane closed - check if window should stop recording
-        # TODO: Check if this was the last pane in a recording window
-        return {"status": "ok", "action": "pane_closed"}
-
-    elif hook_name == "window-pane-changed":
+        return "pane_created"
+    elif hook_name == "after-kill-pane":
+        return "pane_closed"
+    elif hook_name == "after-select-pane":
         # Active pane changed within a window
-        if event.session_name and event.window_id:
-            recorder_key = f"{event.session_name}:{event.window_id}"
+        if event.session_name and event.window_name:
+            recorder_key = f"{event.session_name}:{event.window_name}"
             if recorder_key in recorders:
                 # Switch recording to new active pane
                 recorder = recorders[recorder_key]
                 if event.pane_id:
                     recorder.switch_active_pane(event.pane_id)
-        return {"status": "ok", "action": "pane_switched"}
-
-    elif hook_name == "pane-focus-in":
-        # Pane gained focus
-        if event.session_name and event.window_id:
-            recorder_key = f"{event.session_name}:{event.window_id}"
-            if recorder_key in recorders:
-                # Switch recording to focused pane
-                recorder = recorders[recorder_key]
-                if event.pane_id:
-                    recorder.switch_active_pane(event.pane_id)
-        return {"status": "ok", "action": "pane_focused"}
-
+        return "pane_switched"
     elif hook_name == "after-resize-pane":
-        # Pane resized - may need to update recording dimensions
-        return {"status": "ok", "action": "pane_resized"}
-
-    elif hook_name == "window-renamed":
-        # Window renamed - update recording filename/symlink
-        # TODO: Update recorder with new window name
-        return {"status": "ok", "action": "window_renamed"}
-
-    elif hook_name == "session-renamed":
-        # Session renamed
-        # TODO: Update all recorders for this session
-        return {"status": "ok", "action": "session_renamed"}
-
+        return "pane_resized"
+    elif hook_name == "after-rename-window":
+        return "window_renamed"
+    elif hook_name == "after-rename-session":
+        return "session_renamed"
     else:
-        return {"status": "ok", "action": "unknown", "hook": hook_name}
+        return f"unknown_hook_{hook_name}"
 
 
 def setup_tmux_hooks():
     """Set up tmux hooks to call our callbacks."""
+
     base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callback"
 
     # Define hooks we want to monitor
@@ -91,28 +140,40 @@ def setup_tmux_hooks():
         "after-new-session",
         "after-new-window",
         "after-split-window",
-        "pane-died",
+        "after-kill-pane",
         "after-resize-pane",
-        "window-renamed",
-        "session-renamed",
-        "window-pane-changed",  # When active pane changes
-        "pane-focus-in",        # When pane gets focus
+        "after-rename-window",
+        "after-rename-session",
+        "after-select-pane",     # When active pane changes
     ]
 
     for hook in hooks:
-        # Build the curl command with common tmux variables
-        curl_cmd = (
-            f"curl -s -X POST {base_url}/{hook} "
-            f"-H 'Content-Type: application/json' "
-            f"-d '{{\"pane_id\":\"#{{pane_id}}\","
-            f"\"session_name\":\"#{{session_name}}\","
-            f"\"window_id\":\"#{{window_id}}\","
-            f"\"window_index\":#{{window_index}},"
-            f"\"pane_index\":#{{pane_index}}}}'"
-        )
+        # Build JSON template manually since we can't validate tmux variables
+        # This creates a proper JSON structure that tmux will substitute
+        json_template = json.dumps({
+            "hook_name": hook,
+            "pane_id": "PANE_ID_PLACEHOLDER",
+            "session_name": "SESSION_NAME_PLACEHOLDER",
+            "window_name": "WINDOW_NAME_PLACEHOLDER",
+            "window_id": "WINDOW_ID_PLACEHOLDER",
+            "window_index": "WINDOW_INDEX_PLACEHOLDER",
+            "pane_index": "PANE_INDEX_PLACEHOLDER"
+        })
+
+        # Replace placeholders with actual tmux variables
+        json_template = json_template.replace('"PANE_ID_PLACEHOLDER"', '"#{pane_id}"')
+        json_template = json_template.replace('"SESSION_NAME_PLACEHOLDER"', '"#{session_name}"')
+        json_template = json_template.replace('"WINDOW_NAME_PLACEHOLDER"', '"#{window_name}"')
+        json_template = json_template.replace('"WINDOW_ID_PLACEHOLDER"', '"#{window_id}"')
+        json_template = json_template.replace('"WINDOW_INDEX_PLACEHOLDER"', '#{window_index}')  # Numeric, no quotes
+        json_template = json_template.replace('"PANE_INDEX_PLACEHOLDER"', '#{pane_index}')      # Numeric, no quotes
+
+        # Build curl command for the REST endpoint - need to escape quotes properly
+        # Redirect output to /dev/null to avoid polluting the terminal
+        curl_cmd = f'curl -s -X POST {base_url}/ -H "Content-Type: application/json" -d {shlex.quote(json_template)} >/dev/null 2>&1'
 
         # Set the hook
-        subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell '{curl_cmd}'"])
+        subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell {shlex.quote(curl_cmd)}"])
 
 
 def remove_tmux_hooks():
@@ -121,12 +182,11 @@ def remove_tmux_hooks():
         "after-new-session",
         "after-new-window",
         "after-split-window",
-        "pane-died",
+        "after-kill-pane",
         "after-resize-pane",
-        "window-renamed",
-        "session-renamed",
-        "window-pane-changed",
-        "pane-focus-in",
+        "after-rename-window",
+        "after-rename-session",
+        "after-select-pane",
     ]
 
     for hook in hooks:
