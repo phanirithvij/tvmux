@@ -50,7 +50,7 @@ class WindowRecorder:
             self.hostname,
             session_id,
             self.tmux_var,
-            base_dir="/run/tvmux"
+            base_dir=f"/tmp/tvmux-{os.getenv('USER', 'nobody')}/sessions"
         )
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -58,7 +58,7 @@ class WindowRecorder:
         self.state: Optional[RecordingState] = None
         self._running = False
 
-    def start_recording(self, window_name: str, active_pane: str) -> bool:
+    async def start_recording(self, window_name: str, active_pane: str) -> bool:
         """Start recording this window.
 
         Args:
@@ -101,7 +101,7 @@ class WindowRecorder:
         )
 
         # Start asciinema process
-        if self._start_asciinema():
+        if await self._start_asciinema():
             self.state.recording = True
             self._dump_pane(active_pane)
             self._start_streaming(active_pane)
@@ -155,7 +155,7 @@ class WindowRecorder:
         logger.info(f"Stopped recording window {self.window_id}")
         return True
 
-    def _start_asciinema(self) -> bool:
+    async def _start_asciinema(self) -> bool:
         """Start the asciinema process."""
         if not self.state:
             return False
@@ -187,7 +187,7 @@ class WindowRecorder:
 
         # Wait for process to be ready
         # TODO: Better readiness check
-        asyncio.create_task(asyncio.sleep(1))
+        await asyncio.sleep(1)
 
         return True
 

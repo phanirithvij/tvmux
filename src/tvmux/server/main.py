@@ -7,7 +7,7 @@ import sys
 from fastapi import FastAPI
 
 from .state import server_dir, recorders, SERVER_HOST, SERVER_PORT
-from .routers import session, window, callback
+from .routers import session, window, callback, recording
 
 app = FastAPI(title="tvmux server")
 
@@ -15,6 +15,7 @@ app = FastAPI(title="tvmux server")
 app.include_router(session.router, prefix="/session", tags=["session"])
 app.include_router(window.router, prefix="/window", tags=["window"])
 app.include_router(callback.router, prefix="/callback", tags=["callback"])
+app.include_router(recording.router, prefix="/recording", tags=["recording"])
 
 
 @app.on_event("startup")
