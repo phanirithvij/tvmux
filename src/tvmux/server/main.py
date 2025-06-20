@@ -6,7 +6,7 @@ import subprocess
 import sys
 from fastapi import FastAPI
 
-from .state import server_dir, terminals, SERVER_HOST, SERVER_PORT
+from .state import server_dir, recorders, SERVER_HOST, SERVER_PORT
 from .routers import session, window, callback
 
 app = FastAPI(title="tvmux server")
@@ -42,9 +42,9 @@ async def shutdown():
     # Remove PID file
     (server_dir / "server.pid").unlink(missing_ok=True)
 
-    # Clean up terminals
-    for term in terminals.values():
-        await term.stop()
+    # Clean up recorders
+    for recorder in recorders.values():
+        recorder.stop_recording()
 
 
 @app.get("/")
@@ -53,7 +53,7 @@ async def root():
     return {
         "status": "running",
         "pid": os.getpid(),
-        "terminals": len(terminals)
+        "recorders": len(recorders)
     }
 
 

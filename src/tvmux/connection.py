@@ -57,22 +57,30 @@ class Connection:
         # Create server directory
         self.server_dir.mkdir(exist_ok=True)
 
-        # Start server in background
-        subprocess.Popen(
-            ["python", "-m", "tvmux.server.main"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True
-        )
+        # Log file for debugging
+        log_file = self.server_dir / "server.log"
+
+        # Start server in background with logging
+        with open(log_file, "w") as log:
+            proc = subprocess.Popen(
+                ["python", "-m", "tvmux.server.main"],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True
+            )
 
         # Wait for server to start
-        for _ in range(10):
+        for _ in range(30):  # 3 seconds
             if self.is_running:
                 print(f"Server started (PID: {self.server_pid})")
                 return True
             time.sleep(0.1)
 
+        # Server failed to start - show the error
         print("Failed to start server")
+        if log_file.exists():
+            print("\nServer log:")
+            print(log_file.read_text())
         return False
 
     def stop(self) -> bool:

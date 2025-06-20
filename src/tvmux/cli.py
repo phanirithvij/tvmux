@@ -8,7 +8,7 @@ from .connection import Connection
 @click.group()
 @click.version_option()
 def cli():
-    """Terminal session recorder for tmux."""
+    """Per-window recorder for tmux."""
     pass
 
 
@@ -63,12 +63,25 @@ def status():
             click.echo(f"\nSessions: {len(sessions)}")
             click.echo(f"Windows: {len(windows)}")
             click.echo(f"Panes: {total_panes}")
-            click.echo(f"Terminal trackers: {data['terminals']}")
+            click.echo(f"Window recorders: {data['recorders']}")
 
         except Exception as e:
             click.echo(f"Error querying server: {e}", err=True)
     else:
         click.echo("Server not running")
+
+
+@cli.command()
+def record():
+    """Start recording current tmux window."""
+    conn = Connection()
+    if not conn.is_running:
+        click.echo("Server not running. Run 'tvmux start' first.", err=True)
+        raise click.Abort()
+
+    # TODO: Get current tmux session/window from environment
+    # TODO: Call API to start recording
+    click.echo("Recording functionality not yet implemented")
 
 
 if __name__ == "__main__":

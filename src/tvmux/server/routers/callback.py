@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
-from ..state import terminals, SERVER_HOST, SERVER_PORT
+from ..state import recorders, SERVER_HOST, SERVER_PORT
 
 router = APIRouter()
 
@@ -30,44 +30,52 @@ async def handle_callback(hook_name: str, event: HookEvent):
         return {"status": "ok", "action": "session_created"}
 
     elif hook_name == "after-new-window":
-        # New window created
+        # New window created - ready for recording
         return {"status": "ok", "action": "window_created"}
 
     elif hook_name == "after-split-window":
-        # New pane created - start tracking
-        if event.pane_id and event.pane_id not in terminals:
-            terminals[event.pane_id] = {
-                "pane_id": event.pane_id,
-                "session": event.session_name,
-                "window_id": event.window_id,
-                "state": {
-                    "cursor_x": 0,
-                    "cursor_y": 0,
-                    "width": 80,
-                    "height": 24
-                }
-            }
+        # New pane created - no action needed (we track windows, not panes)
         return {"status": "ok", "action": "pane_created"}
 
     elif hook_name == "pane-died":
-        # Pane closed - stop tracking
-        if event.pane_id and event.pane_id in terminals:
-            del terminals[event.pane_id]
+        # Pane closed - check if window should stop recording
+        # TODO: Check if this was the last pane in a recording window
         return {"status": "ok", "action": "pane_closed"}
 
+    elif hook_name == "window-pane-changed":
+        # Active pane changed within a window
+        if event.session_name and event.window_id:
+            recorder_key = f"{event.session_name}:{event.window_id}"
+            if recorder_key in recorders:
+                # Switch recording to new active pane
+                recorder = recorders[recorder_key]
+                if event.pane_id:
+                    recorder.switch_active_pane(event.pane_id)
+        return {"status": "ok", "action": "pane_switched"}
+
+    elif hook_name == "pane-focus-in":
+        # Pane gained focus
+        if event.session_name and event.window_id:
+            recorder_key = f"{event.session_name}:{event.window_id}"
+            if recorder_key in recorders:
+                # Switch recording to focused pane
+                recorder = recorders[recorder_key]
+                if event.pane_id:
+                    recorder.switch_active_pane(event.pane_id)
+        return {"status": "ok", "action": "pane_focused"}
+
     elif hook_name == "after-resize-pane":
-        # Pane resized
-        if event.pane_id and event.pane_id in terminals:
-            # TODO: Update size in tracking state
-            pass
+        # Pane resized - may need to update recording dimensions
         return {"status": "ok", "action": "pane_resized"}
 
     elif hook_name == "window-renamed":
-        # Window renamed
+        # Window renamed - update recording filename/symlink
+        # TODO: Update recorder with new window name
         return {"status": "ok", "action": "window_renamed"}
 
     elif hook_name == "session-renamed":
         # Session renamed
+        # TODO: Update all recorders for this session
         return {"status": "ok", "action": "session_renamed"}
 
     else:
@@ -87,6 +95,8 @@ def setup_tmux_hooks():
         "after-resize-pane",
         "window-renamed",
         "session-renamed",
+        "window-pane-changed",  # When active pane changes
+        "pane-focus-in",        # When pane gets focus
     ]
 
     for hook in hooks:
@@ -115,6 +125,8 @@ def remove_tmux_hooks():
         "after-resize-pane",
         "window-renamed",
         "session-renamed",
+        "window-pane-changed",
+        "pane-focus-in",
     ]
 
     for hook in hooks:
