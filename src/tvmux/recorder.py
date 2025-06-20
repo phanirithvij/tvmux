@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RecordingState:
     """State of a window recording."""
-    window_id: str
-    session_name: str
     window_name: str
+    session_name: str
     active_pane: Optional[str]
     asciinema_pid: Optional[int]
     fifo_path: Path
@@ -29,16 +28,16 @@ class RecordingState:
 class WindowRecorder:
     """Records a single tmux window by following the active pane."""
 
-    def __init__(self, session_id: str, window_id: str, output_dir: Path):
+    def __init__(self, session_id: str, window_name: str, output_dir: Path):
         """Initialize window recorder.
 
         Args:
             session_id: tmux session ID (e.g., "main")
-            window_id: tmux window ID (e.g., "@1")
+            window_name: tmux window name (e.g., "tvmux")
             output_dir: Base directory for recordings (e.g., ~/Videos/tmux)
         """
         self.session_id = session_id
-        self.window_id = window_id
+        self.window_name = window_name
         self.output_dir = output_dir
 
         # Get session info
@@ -58,22 +57,22 @@ class WindowRecorder:
         self.state: Optional[RecordingState] = None
         self._running = False
 
-    async def start_recording(self, window_name: str, active_pane: str) -> bool:
+    async def start_recording(self, active_pane: str) -> bool:
         """Start recording this window.
 
         Args:
-            window_name: Human-readable window name
             active_pane: Currently active pane ID
 
         Returns:
             True if recording started successfully
         """
         if self.state and self.state.recording:
-            logger.warning(f"Window {self.window_id} already recording")
+            logger.warning(f"Window {self.window_name} already recording")
             return False
 
         # Create FIFO
-        fifo_path = self.session_dir / f"window_{self.window_id.strip('@')}.fifo"
+        safe_window_name = self.window_name.replace("/", "_").replace(" ", "_")
+        fifo_path = self.session_dir / f"window_{safe_window_name}.fifo"
         if fifo_path.exists():
             fifo_path.unlink()
         os.mkfifo(fifo_path)
@@ -84,15 +83,14 @@ class WindowRecorder:
 
         # Generate cast filename
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-        safe_window_name = window_name.replace("/", "_").replace(" ", "_")
+        safe_window_name = self.window_name.replace("/", "_").replace(" ", "_")
         cast_filename = f"{timestamp}_{self.hostname}_{self.session_id}_{safe_window_name}.cast"
         cast_path = date_dir / cast_filename
 
         # Initialize state
         self.state = RecordingState(
-            window_id=self.window_id,
+            window_name=self.window_name,
             session_name=self.session_id,
-            window_name=window_name,
             active_pane=active_pane,
             asciinema_pid=None,
             fifo_path=fifo_path,
@@ -105,16 +103,16 @@ class WindowRecorder:
             self.state.recording = True
             self._dump_pane(active_pane)
             self._start_streaming(active_pane)
-            logger.info(f"Started recording window {self.window_id} to {cast_path}")
+            logger.info(f"Started recording window {self.window_name} to {cast_path}")
             return True
         else:
-            logger.error(f"Failed to start recording for window {self.window_id}")
+            logger.error(f"Failed to start recording for window {self.window_name}")
             return False
 
     def switch_active_pane(self, new_pane_id: str):
         """Switch recording to a different pane in the window."""
         if not self.state or not self.state.recording:
-            logger.warning(f"Window {self.window_id} not recording")
+            logger.warning(f"Window {self.window_name} not recording")
             return
 
         if self.state.active_pane == new_pane_id:
@@ -129,7 +127,7 @@ class WindowRecorder:
         self._start_streaming(new_pane_id)
 
         self.state.active_pane = new_pane_id
-        logger.info(f"Switched to pane {new_pane_id} in window {self.window_id}")
+        logger.info(f"Switched to pane {new_pane_id} in window {self.window_name}")
 
     def stop_recording(self) -> bool:
         """Stop recording this window."""
@@ -152,7 +150,7 @@ class WindowRecorder:
             self.state.fifo_path.unlink()
 
         self.state.recording = False
-        logger.info(f"Stopped recording window {self.window_id}")
+        logger.info(f"Stopped recording window {self.window_name}")
         return True
 
     async def _start_asciinema(self) -> bool:
