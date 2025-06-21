@@ -131,14 +131,14 @@ class Recorder:
         logger.debug(f"switch_pane called: new_pane_id={new_pane_id}, window={self.window_id}")
 
         if not self.state or not self.state.recording:
-            logger.warning(f"Window {self.window_name} not recording, state={self.state}, recording={self.state.recording if self.state else None}")
+            logger.warning(f"Window {self.window_id} not recording, state={self.state}, recording={self.state.recording if self.state else None}")
             return
 
         if self.state.active_pane == new_pane_id:
             logger.debug(f"Already recording pane {new_pane_id}, no switch needed")
             return  # Already recording this pane
 
-        logger.info(f"Switching from pane {self.state.active_pane} to {new_pane_id} in window {self.window_name}")
+        logger.info(f"Switching from pane {self.state.active_pane} to {new_pane_id} in window {self.window_id}")
 
         # Stop streaming from old pane
         if self.state.active_pane:
@@ -151,7 +151,7 @@ class Recorder:
         self._start_streaming(new_pane_id)
 
         self.state.active_pane = new_pane_id
-        logger.info(f"Successfully switched to pane {new_pane_id} in window {self.window_name}")
+        logger.info(f"Successfully switched to pane {new_pane_id} in window {self.window_id}")
 
     def stop(self) -> bool:
         """Stop recording this window."""

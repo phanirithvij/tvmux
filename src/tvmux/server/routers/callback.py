@@ -118,6 +118,7 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         logger.debug(f"Pane select event: session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
 
         if event.session_name and event.window_id:
+            # Use session_name from callback as session_id for recorder key
             recorder_key = f"{event.session_name}:{event.window_id}"
             logger.debug(f"Looking for recorder with key: {recorder_key}")
             logger.debug(f"Available recorders: {list(recorders.keys())}")
@@ -178,7 +179,7 @@ def setup_tmux_hooks():
         curl_cmd = f'curl -s -X POST {base_url}/ -H "Content-Type: application/json" -d {shlex.quote(json_data)} >/dev/null 2>&1'
 
         # Set the hook
-        subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell {shlex.quote(curl_cmd)}"])
+        subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell '{curl_cmd}'"])
 
 
 def remove_tmux_hooks():
