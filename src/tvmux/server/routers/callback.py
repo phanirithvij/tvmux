@@ -164,30 +164,19 @@ def setup_tmux_hooks():
     ]
 
     for hook in hooks:
-        # Build JSON template manually since we can't validate tmux variables
-        # This creates a proper JSON structure that tmux will substitute
-        json_template = json.dumps({
-            "hook_name": hook,
-            "pane_id": "PANE_ID_PLACEHOLDER",
-            "session_name": "SESSION_NAME_PLACEHOLDER",
-            "window_name": "WINDOW_NAME_PLACEHOLDER",
-            "window_id": "WINDOW_ID_PLACEHOLDER",
-            "window_index": "WINDOW_INDEX_PLACEHOLDER",
-            "pane_index": "PANE_INDEX_PLACEHOLDER"
-        })
-
-        # Replace placeholders with actual tmux variables
-        json_template = json_template.replace('"PANE_ID_PLACEHOLDER"', '"#{pane_id}"')
-        json_template = json_template.replace('"SESSION_NAME_PLACEHOLDER"', '"#{session_name}"')
-        # Always use window_id as the stable identifier
-        json_template = json_template.replace('"WINDOW_NAME_PLACEHOLDER"', '"#{window_id}"')
-        json_template = json_template.replace('"WINDOW_ID_PLACEHOLDER"', '"#{window_id}"')
-        json_template = json_template.replace('"WINDOW_INDEX_PLACEHOLDER"', '#{window_index}')  # Numeric, no quotes
-        json_template = json_template.replace('"PANE_INDEX_PLACEHOLDER"', '#{pane_index}')      # Numeric, no quotes
+        # Simple JSON string with tmux variables - much cleaner than placeholder replacement
+        json_data = (
+            '{"hook_name":"' + hook + '",'
+            '"pane_id":"#{pane_id}",'
+            '"session_name":"#{session_name}",'
+            '"window_id":"#{window_id}",'
+            '"window_index":#{window_index},'
+            '"pane_index":#{pane_index}}'
+        )
 
         # Build curl command for the REST endpoint - need to escape quotes properly
         # Redirect output to /dev/null to avoid polluting the terminal
-        curl_cmd = f'curl -s -X POST {base_url}/ -H "Content-Type: application/json" -d {shlex.quote(json_template)} >/dev/null 2>&1'
+        curl_cmd = f'curl -s -X POST {base_url}/ -H "Content-Type: application/json" -d {shlex.quote(json_data)} >/dev/null 2>&1'
 
         # Set the hook
         subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell {shlex.quote(curl_cmd)}"])
