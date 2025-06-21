@@ -162,14 +162,30 @@ class WindowRecorder:
         import time
         time.sleep(0.1)
 
-        # Kill asciinema process
+        # Kill asciinema process first, then clean up FIFO
         if self.state.asciinema_pid:
             try:
-                os.kill(self.state.asciinema_pid, 15)  # SIGTERM
+                # Send SIGTERM and wait for graceful shutdown
+                os.kill(self.state.asciinema_pid, 15)
+
+                # Wait up to 2 seconds for the process to exit
+                for _ in range(20):
+                    try:
+                        os.kill(self.state.asciinema_pid, 0)  # Check if still running
+                        time.sleep(0.1)
+                    except ProcessLookupError:
+                        break  # Process has exited
+                else:
+                    # Force kill if still running after 2 seconds
+                    try:
+                        os.kill(self.state.asciinema_pid, 9)  # SIGKILL
+                    except ProcessLookupError:
+                        pass
+
             except ProcessLookupError:
                 pass
 
-        # Clean up FIFO
+        # Now it's safe to clean up FIFO
         if self.state.fifo_path.exists():
             self.state.fifo_path.unlink()
 
@@ -218,29 +234,48 @@ class WindowRecorder:
         if not self.state:
             return
 
-        # Clear screen and reset terminal
-        reset_seq = "\033[2J\033[H\033[0m"
+        try:
+            # Get cursor position and visibility
+            cursor_info = subprocess.run(
+                ["tmux", "display-message", "-p", "-t", pane_id,
+                 "#{cursor_x} #{cursor_y} #{cursor_flag}"],
+                capture_output=True,
+                text=True
+            ).stdout.strip()
 
-        # Capture pane content with escape sequences
-        content = subprocess.run(
-            ["tmux", "capture-pane", "-e", "-p", "-t", pane_id],
-            capture_output=True,
-            text=True
-        ).stdout
+            cursor_x, cursor_y, cursor_flag = cursor_info.split()
+            cursor_x = int(cursor_x)
+            cursor_y = int(cursor_y)
+            cursor_visible = cursor_flag == "1"
 
-        # Get cursor position
-        cursor_info = subprocess.run(
-            ["tmux", "display-message", "-p", "-t", pane_id,
-             "#{cursor_x} #{cursor_y} #{cursor_flag}"],
-            capture_output=True,
-            text=True
-        ).stdout.strip()
+            # Capture pane content with escape sequences
+            content = subprocess.run(
+                ["tmux", "capture-pane", "-e", "-p", "-t", pane_id],
+                capture_output=True,
+                text=True
+            ).stdout
 
-        # Write to FIFO
-        with open(self.state.fifo_path, "w") as f:
-            f.write(reset_seq)
-            f.write(content)
-            # TODO: Restore cursor position
+            # Write to FIFO
+            with open(self.state.fifo_path, "w") as f:
+                # Clear screen first
+                f.write("\033[2J")      # Clear entire screen
+                f.write("\033[H")       # Move cursor to home position (1,1)
+                f.write("\033[0m")      # Reset all attributes
+
+                # Write the pane content
+                f.write(content)
+
+                # Restore cursor position (tmux uses 0-based, ANSI uses 1-based)
+                f.write(f"\033[{cursor_y + 1};{cursor_x + 1}H")
+
+                # Restore cursor visibility
+                if cursor_visible:
+                    f.write("\033[?25h")  # Show cursor
+                else:
+                    f.write("\033[?25l")  # Hide cursor
+
+        except Exception as e:
+            logger.error(f"Failed to dump pane {pane_id}: {e}")
 
     def _start_streaming(self, pane_id: str):
         """Start streaming pane output to FIFO."""

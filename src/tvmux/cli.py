@@ -12,8 +12,14 @@ def cli():
     pass
 
 
-@cli.command()
-def start():
+@cli.group()
+def server():
+    """Manage the tvmux server."""
+    pass
+
+
+@server.command("start")
+def server_start():
     """Start the tvmux server."""
     conn = Connection()
     if conn.start():
@@ -23,8 +29,8 @@ def start():
         raise click.Abort()
 
 
-@cli.command()
-def stop():
+@server.command("stop")
+def server_stop():
     """Stop the tvmux server."""
     conn = Connection()
     if conn.stop():
@@ -34,8 +40,8 @@ def stop():
         raise click.Abort()
 
 
-@cli.command()
-def status():
+@server.command("status")
+def server_status():
     """Check server status."""
     conn = Connection()
     if conn.is_running:
@@ -85,8 +91,11 @@ def record_start():
 
     conn = Connection()
     if not conn.is_running:
-        click.echo("Server not running. Run 'tvmux start' first.", err=True)
-        raise click.Abort()
+        click.echo("Server not running, starting automatically...")
+        if not conn.start():
+            click.echo("Failed to start server", err=True)
+            raise click.Abort()
+        click.echo(f"Server started at {conn.base_url}")
 
     # Check if we're in tmux
     if not os.environ.get("TMUX"):
