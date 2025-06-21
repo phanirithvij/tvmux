@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -101,11 +102,17 @@ class WindowRecorder:
 
         # Start asciinema process
         if await self._start_asciinema():
-            self.state.recording = True
-            self._dump_pane(active_pane)
-            self._start_streaming(active_pane)
-            logger.info(f"Started recording window {self.window_name} to {cast_path}")
-            return True
+            # Wait for asciinema to be ready before starting pipe-pane
+            if await self._wait_for_reader_ready():
+                self.state.recording = True
+                self._dump_pane(active_pane)
+                self._start_streaming(active_pane)
+                logger.info(f"Started recording window {self.window_name} to {cast_path}")
+                return True
+            else:
+                logger.error("Asciinema reader not ready, stopping")
+                await self.stop_recording()
+                return False
         else:
             logger.error(f"Failed to start recording for window {self.window_name}")
             return False
@@ -160,7 +167,6 @@ class WindowRecorder:
                 logger.warning(f"Failed to write terminal reset: {e}")
 
         # Small delay to ensure reset sequences are processed
-        import time
         time.sleep(0.1)
 
         # Kill asciinema process tree (includes script, tail, etc.)
@@ -269,9 +275,40 @@ class WindowRecorder:
         except Exception as e:
             logger.error(f"Failed to dump pane {pane_id}: {e}")
 
+    def _is_fifo_being_read(self) -> bool:
+        """Check if someone is reading from the FIFO to prevent deadlocks."""
+        if not self.state or not self.state.fifo_path.exists():
+            return False
+
+        try:
+            # Check for tail process reading this specific FIFO
+            result = subprocess.run(
+                ["pgrep", "-f", f"tail -F {self.state.fifo_path}"],
+                capture_output=True
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    async def _wait_for_reader_ready(self, max_retries: int = 30, retry_delay: float = 0.1) -> bool:
+        """Wait for asciinema to be ready before starting pipe-pane."""
+        for attempt in range(max_retries):
+            if self._is_fifo_being_read():
+                logger.debug(f"FIFO reader ready after {attempt + 1} attempts")
+                return True
+            await asyncio.sleep(retry_delay)
+
+        logger.warning(f"FIFO reader not ready after {max_retries} attempts")
+        return False
+
     def _start_streaming(self, pane_id: str):
         """Start streaming pane output to FIFO."""
         if not self.state:
+            return
+
+        # Ensure FIFO reader is active to prevent deadlocks
+        if not self._is_fifo_being_read():
+            logger.warning(f"No FIFO reader detected, not starting pipe-pane for {pane_id}")
             return
 
         cmd = ["tmux", "pipe-pane", "-t", pane_id, f"cat >> {self.state.fifo_path}"]
