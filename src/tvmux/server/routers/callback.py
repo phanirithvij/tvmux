@@ -24,7 +24,6 @@ class CallbackEvent(BaseModel):
     hook_name: str
     pane_id: Optional[str] = None
     session_name: Optional[str] = None
-    window_name: Optional[str] = None
     window_id: Optional[str] = None
     window_index: Optional[int] = None
     pane_index: Optional[int] = None
@@ -104,7 +103,7 @@ async def delete_callback(event_id: str) -> Dict[str, str]:
 async def _process_callback_event(event: CallbackEvent) -> str:
     """Process a callback event and return the action taken."""
     hook_name = event.hook_name
-    logger.debug(f"Processing callback: {hook_name}, session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
+    logger.debug(f"Processing callback: {hook_name}, session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
 
     if hook_name == "after-new-session":
         return "session_created"
@@ -116,7 +115,7 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         return "pane_closed"
     elif hook_name == "after-select-pane":
         # Active pane changed within a window
-        logger.debug(f"Pane select event: session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
+        logger.debug(f"Pane select event: session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
 
         if event.session_name and event.window_id:
             recorder_key = f"{event.session_name}:{event.window_id}"
@@ -134,7 +133,7 @@ async def _process_callback_event(event: CallbackEvent) -> str:
             else:
                 logger.debug(f"No recorder found for {recorder_key}")
         else:
-            logger.warning("Missing session_name or window_name in select-pane event")
+            logger.warning("Missing session_name or window_id in select-pane event")
         return "pane_switched"
     elif hook_name == "after-resize-pane":
         return "pane_resized"

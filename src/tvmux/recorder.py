@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class RecordingState:
     """State of a window recording."""
-    window_name: str
+    window_id: str
     session_name: str
     active_pane: Optional[str]
     asciinema_pid: Optional[int]
@@ -31,16 +31,16 @@ class RecordingState:
 class Recorder:
     """Records a single tmux window by following the active pane."""
 
-    def __init__(self, session_id: str, window_name: str, output_dir: Path):
+    def __init__(self, session_id: str, window_id: str, output_dir: Path):
         """Initialize window recorder.
 
         Args:
             session_id: tmux session ID (e.g., "main")
-            window_name: tmux window name (e.g., "tvmux")
+            window_id: tmux window ID (e.g., "@1")
             output_dir: Base directory for recordings (e.g., ~/Videos/tmux)
         """
         self.session_id = session_id
-        self.window_name = window_name
+        self.window_id = window_id
         self.output_dir = output_dir
 
         # Get session info
@@ -63,12 +63,12 @@ class Recorder:
     async def start(self, active_pane: str) -> bool:
         """Start recording this window."""
         if self.state and self.state.recording:
-            logger.warning(f"Window {self.window_name} already recording")
+            logger.warning(f"Window {self.window_id} already recording")
             return False
 
         # Create FIFO
-        safe_window_name = safe_filename(self.window_name)
-        fifo_path = self.session_dir / f"window_{safe_window_name}.fifo"
+        safe_window_id = safe_filename(self.window_id)
+        fifo_path = self.session_dir / f"window_{safe_window_id}.fifo"
         if fifo_path.exists():
             fifo_path.unlink()
         os.mkfifo(fifo_path)
@@ -80,19 +80,19 @@ class Recorder:
         # Generate cast filename using display name
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
 
-        # Get display name for filename (window_name is now window_id, so get the actual name)
+        # Get display name for filename
         try:
             result = subprocess.run([
-                "tmux", "display-message", "-t", f"{self.session_id}:{self.window_name}",
+                "tmux", "display-message", "-t", f"{self.session_id}:{self.window_id}",
                 "-p", "#{window_name}"
             ], capture_output=True, text=True)
 
             if result.returncode == 0 and result.stdout.strip():
                 display_name = result.stdout.strip()
             else:
-                display_name = self.window_name
+                display_name = self.window_id
         except (subprocess.CalledProcessError, ValueError, OSError):
-            display_name = self.window_name
+            display_name = self.window_id
 
         safe_window_name = safe_filename(display_name)
         cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.session_id)}_{safe_window_name}.cast"
@@ -100,7 +100,7 @@ class Recorder:
 
         # Initialize state
         self.state = RecordingState(
-            window_name=self.window_name,
+            window_id=self.window_id,
             session_name=self.session_id,
             active_pane=active_pane,
             asciinema_pid=None,
@@ -116,19 +116,19 @@ class Recorder:
                 self.state.recording = True
                 self._dump_pane(active_pane)
                 self._start_streaming(active_pane)
-                logger.info(f"Started recording window {self.window_name} to {cast_path}")
+                logger.info(f"Started recording window {self.window_id} to {cast_path}")
                 return True
             else:
                 logger.error("Asciinema reader not ready, stopping")
                 self.stop()
                 return False
         else:
-            logger.error(f"Failed to start recording for window {self.window_name}")
+            logger.error(f"Failed to start recording for window {self.window_id}")
             return False
 
     def switch_pane(self, new_pane_id: str):
         """Switch recording to a different pane in the window."""
-        logger.debug(f"switch_pane called: new_pane_id={new_pane_id}, window={self.window_name}")
+        logger.debug(f"switch_pane called: new_pane_id={new_pane_id}, window={self.window_id}")
 
         if not self.state or not self.state.recording:
             logger.warning(f"Window {self.window_name} not recording, state={self.state}, recording={self.state.recording if self.state else None}")
@@ -204,7 +204,7 @@ class Recorder:
                 logger.warning("Cast file repair failed")
 
         self.state.recording = False
-        logger.info(f"Stopped recording window {self.window_name}")
+        logger.info(f"Stopped recording window {self.window_id}")
         return True
 
     async def _start_asciinema(self) -> bool:

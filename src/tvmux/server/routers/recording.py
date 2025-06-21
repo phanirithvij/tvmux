@@ -16,7 +16,15 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_id(session_id: str, window_name: str) -> str:
-    """Get window ID from window name/index."""
+    """Get window ID from window name/index/id.
+
+    Args:
+        session_id: The session ID
+        window_name: Window name, index, or ID
+
+    Returns:
+        Window ID (e.g., "@1")
+    """
     try:
         # Use display-message to get the window ID for the specific window
         result = subprocess.run([
@@ -59,7 +67,7 @@ router = APIRouter()
 class StartRecordingRequest(BaseModel):
     """Request to start recording a window."""
     session_id: str
-    window_name: str
+    window_name: str  # Can be window name, index, or ID
     active_pane: str
     output_dir: Optional[str] = None
 
@@ -101,7 +109,7 @@ async def start(request: StartRecordingRequest) -> RecordingStatus:
     # Create recorder
     recorder = Recorder(
         session_id=request.session_id,
-        window_name=window_id,
+        window_id=window_id,
         output_dir=output_dir
     )
 
