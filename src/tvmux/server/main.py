@@ -1,5 +1,6 @@
 """FastAPI server that manages tmux connections."""
 import asyncio
+import logging
 import os
 import signal
 import subprocess
@@ -14,6 +15,12 @@ from .routers import session, window, callback, recording
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan."""
+    # Set up debug logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
     # Startup
     server_dir.mkdir(exist_ok=True)
     # Write PID file

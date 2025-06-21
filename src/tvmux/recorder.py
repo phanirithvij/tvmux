@@ -83,9 +83,25 @@ class WindowRecorder:
         date_dir = self.output_dir / datetime.now().strftime("%Y-%m")
         date_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate cast filename
+        # Generate cast filename using display name
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-        safe_window_name = self.window_name.replace("/", "_").replace(" ", "_")
+
+        # Get display name for filename (falls back to window_id if needed)
+        try:
+            import subprocess
+            result = subprocess.run([
+                "tmux", "list-windows", "-t", self.session_id, "-f", f"#{{{self.window_name}}}",
+                "-F", "#{window_name}"
+            ], capture_output=True, text=True)
+
+            if result.returncode == 0 and result.stdout.strip():
+                display_name = result.stdout.strip()
+            else:
+                display_name = self.window_name
+        except:
+            display_name = self.window_name
+
+        safe_window_name = display_name.replace("/", "_").replace(" ", "_")
         cast_filename = f"{timestamp}_{self.hostname}_{self.session_id}_{safe_window_name}.cast"
         cast_path = date_dir / cast_filename
 
@@ -119,23 +135,30 @@ class WindowRecorder:
 
     def switch_active_pane(self, new_pane_id: str):
         """Switch recording to a different pane in the window."""
+        logger.debug(f"switch_active_pane called: new_pane_id={new_pane_id}, window={self.window_name}")
+
         if not self.state or not self.state.recording:
-            logger.warning(f"Window {self.window_name} not recording")
+            logger.warning(f"Window {self.window_name} not recording, state={self.state}, recording={self.state.recording if self.state else None}")
             return
 
         if self.state.active_pane == new_pane_id:
+            logger.debug(f"Already recording pane {new_pane_id}, no switch needed")
             return  # Already recording this pane
+
+        logger.info(f"Switching from pane {self.state.active_pane} to {new_pane_id} in window {self.window_name}")
 
         # Stop streaming from old pane
         if self.state.active_pane:
+            logger.debug(f"Stopping streaming from old pane {self.state.active_pane}")
             self._stop_streaming(self.state.active_pane)
 
         # Dump new pane state and start streaming
+        logger.debug(f"Dumping pane {new_pane_id} and starting streaming")
         self._dump_pane(new_pane_id)
         self._start_streaming(new_pane_id)
 
         self.state.active_pane = new_pane_id
-        logger.info(f"Switched to pane {new_pane_id} in window {self.window_name}")
+        logger.info(f"Successfully switched to pane {new_pane_id} in window {self.window_name}")
 
     def stop_recording(self) -> bool:
         """Stop recording this window."""
@@ -218,7 +241,7 @@ class WindowRecorder:
         ]
 
         # Start process
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.state.asciinema_pid = proc.pid
 
         # Wait for process to be ready

@@ -1,5 +1,6 @@
 """Recording management endpoints."""
 import os
+import subprocess
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -7,6 +8,42 @@ from typing import Optional
 
 from ...recorder import WindowRecorder
 from ..state import recorders
+
+
+def get_window_id(session_id: str, window_name: str) -> str:
+    """Get window ID from window name/index."""
+    try:
+        result = subprocess.run([
+            "tmux", "list-windows", "-t", session_id, "-f", f"#{{{window_name}}}",
+            "-F", "#{window_id}"
+        ], capture_output=True, text=True)
+
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+
+        # Fallback: assume it's already a window_id
+        return window_name
+
+    except Exception:
+        return window_name
+
+
+def get_window_display_name(session_id: str, window_id: str) -> str:
+    """Get friendly display name for a window ID."""
+    try:
+        result = subprocess.run([
+            "tmux", "list-windows", "-t", session_id, "-f", f"#{{{window_id}}}",
+            "-F", "#{window_name}"
+        ], capture_output=True, text=True)
+
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+
+        # Fallback to window_id itself
+        return window_id
+
+    except Exception:
+        return window_id
 
 router = APIRouter()
 
@@ -31,7 +68,9 @@ class RecordingStatus(BaseModel):
 @router.post("/start")
 async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
     """Start recording a window."""
-    recorder_key = f"{request.session_id}:{request.window_name}"
+    # Always use window_id as the stable key
+    window_id = get_window_id(request.session_id, request.window_name)
+    recorder_key = f"{request.session_id}:{window_id}"
 
     # Check if already recording
     if recorder_key in recorders:
@@ -55,7 +94,7 @@ async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
     # Create recorder
     recorder = WindowRecorder(
         session_id=request.session_id,
-        window_name=request.window_name,
+        window_name=window_id,
         output_dir=output_dir
     )
 
@@ -76,7 +115,9 @@ async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
 @router.post("/stop")
 async def stop_recording(session_id: str, window_name: str) -> RecordingStatus:
     """Stop recording a window."""
-    recorder_key = f"{session_id}:{window_name}"
+    # Always use window_id as the stable key
+    window_id = get_window_id(session_id, window_name)
+    recorder_key = f"{session_id}:{window_id}"
 
     if recorder_key not in recorders:
         raise HTTPException(status_code=404, detail="Recording not found")

@@ -100,7 +100,11 @@ async def delete_callback(event_id: str) -> Dict[str, str]:
 
 async def _process_callback_event(event: CallbackEvent) -> str:
     """Process a callback event and return the action taken."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     hook_name = event.hook_name
+    logger.debug(f"Processing callback: {hook_name}, session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
 
     if hook_name == "after-new-session":
         return "session_created"
@@ -112,13 +116,25 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         return "pane_closed"
     elif hook_name == "after-select-pane":
         # Active pane changed within a window
+        logger.debug(f"Pane select event: session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
+
         if event.session_name and event.window_name:
             recorder_key = f"{event.session_name}:{event.window_name}"
+            logger.debug(f"Looking for recorder with key: {recorder_key}")
+            logger.debug(f"Available recorders: {list(recorders.keys())}")
+
             if recorder_key in recorders:
                 # Switch recording to new active pane
                 recorder = recorders[recorder_key]
                 if event.pane_id:
+                    logger.info(f"Triggering pane switch to {event.pane_id} for recorder {recorder_key}")
                     recorder.switch_active_pane(event.pane_id)
+                else:
+                    logger.warning(f"No pane_id in select-pane event")
+            else:
+                logger.debug(f"No recorder found for {recorder_key}")
+        else:
+            logger.warning(f"Missing session_name or window_name in select-pane event")
         return "pane_switched"
     elif hook_name == "after-resize-pane":
         return "pane_resized"
@@ -163,7 +179,8 @@ def setup_tmux_hooks():
         # Replace placeholders with actual tmux variables
         json_template = json_template.replace('"PANE_ID_PLACEHOLDER"', '"#{pane_id}"')
         json_template = json_template.replace('"SESSION_NAME_PLACEHOLDER"', '"#{session_name}"')
-        json_template = json_template.replace('"WINDOW_NAME_PLACEHOLDER"', '"#{window_name}"')
+        # Always use window_id as the stable identifier
+        json_template = json_template.replace('"WINDOW_NAME_PLACEHOLDER"', '"#{window_id}"')
         json_template = json_template.replace('"WINDOW_ID_PLACEHOLDER"', '"#{window_id}"')
         json_template = json_template.replace('"WINDOW_INDEX_PLACEHOLDER"', '#{window_index}')  # Numeric, no quotes
         json_template = json_template.replace('"PANE_INDEX_PLACEHOLDER"', '#{pane_index}')      # Numeric, no quotes
