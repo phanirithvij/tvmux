@@ -112,7 +112,7 @@ class Recorder:
         # Start asciinema process
         if await self._start_asciinema():
             # Wait for asciinema to be ready before starting pipe-pane
-            if await self._wait_for_reader_ready():
+            if await self._wait_for_reader():
                 self.state.recording = True
                 self._dump_pane(active_pane)
                 self._start_streaming(active_pane)
@@ -294,7 +294,7 @@ class Recorder:
         except Exception as e:
             logger.error(f"Failed to dump pane {pane_id}: {e}")
 
-    def _is_fifo_being_read(self) -> bool:
+    def _has_reader(self) -> bool:
         """Check if someone is reading from the FIFO to prevent deadlocks."""
         if not self.state or not self.state.fifo_path.exists():
             return False
@@ -310,10 +310,10 @@ class Recorder:
         except Exception:
             return False
 
-    async def _wait_for_reader_ready(self, max_retries: int = 30, retry_delay: float = 0.1) -> bool:
+    async def _wait_for_reader(self, max_retries: int = 30, retry_delay: float = 0.1) -> bool:
         """Wait for asciinema to be ready before starting pipe-pane."""
         for attempt in range(max_retries):
-            if self._is_fifo_being_read():
+            if self._has_reader():
                 logger.debug(f"FIFO reader ready after {attempt + 1} attempts")
                 return True
             await asyncio.sleep(retry_delay)
@@ -327,7 +327,7 @@ class Recorder:
             return
 
         # Ensure FIFO reader is active to prevent deadlocks
-        if not self._is_fifo_being_read():
+        if not self._has_reader():
             logger.warning(f"No FIFO reader detected, not starting pipe-pane for {pane_id}")
             return
 

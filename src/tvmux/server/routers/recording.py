@@ -15,7 +15,7 @@ from ..state import recorders
 logger = logging.getLogger(__name__)
 
 
-def get_window_id(session_id: str, window_name: str) -> str:
+def resolve_id(session_id: str, window_name: str) -> str:
     """Get window ID from window name/index."""
     try:
         result = subprocess.run([
@@ -33,7 +33,7 @@ def get_window_id(session_id: str, window_name: str) -> str:
         return window_name
 
 
-def get_window_display_name(session_id: str, window_id: str) -> str:
+def display_name(session_id: str, window_id: str) -> str:
     """Get friendly display name for a window ID."""
     try:
         result = subprocess.run([
@@ -73,7 +73,7 @@ class RecordingStatus(BaseModel):
 @router.post("/start")
 async def start(request: StartRecordingRequest) -> RecordingStatus:
     # Always use window_id as the stable key
-    window_id = get_window_id(request.session_id, request.window_name)
+    window_id = resolve_id(request.session_id, request.window_name)
     recorder_key = f"{request.session_id}:{window_id}"
 
     # Check if already recording
@@ -119,7 +119,7 @@ async def start(request: StartRecordingRequest) -> RecordingStatus:
 @router.post("/stop")
 async def stop(session_id: str, window_name: str) -> RecordingStatus:
     # Always use window_id as the stable key
-    window_id = get_window_id(session_id, window_name)
+    window_id = resolve_id(session_id, window_name)
     recorder_key = f"{session_id}:{window_id}"
 
     if recorder_key not in recorders:
