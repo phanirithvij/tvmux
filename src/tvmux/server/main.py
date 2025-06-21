@@ -113,7 +113,7 @@ def run_server():
     try:
         uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
     except KeyboardInterrupt:
-        cleanup_and_exit()
+        pass  # cleanup_and_exit will be called by signal handler
     finally:
         # Ensure cleanup happens even on unexpected exits
         cleanup_and_exit()
