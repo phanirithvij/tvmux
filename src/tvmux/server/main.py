@@ -4,23 +4,17 @@ import os
 import signal
 import subprocess
 import sys
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .state import server_dir, recorders, SERVER_HOST, SERVER_PORT
 from .routers import session, window, callback, recording
 
-app = FastAPI(title="tvmux server")
 
-# Include routers
-app.include_router(session.router, prefix="/session", tags=["session"])
-app.include_router(window.router, prefix="/window", tags=["window"])
-app.include_router(callback.router, prefix="/callback", tags=["callback"])
-app.include_router(recording.router, prefix="/recording", tags=["recording"])
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize server."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan."""
+    # Startup
     server_dir.mkdir(exist_ok=True)
     # Write PID file
     (server_dir / "server.pid").write_text(str(os.getpid()))
@@ -33,10 +27,9 @@ async def startup():
 
     # TODO: Discover existing panes and start tracking them
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown():
-    """Cleanup on shutdown."""
+    # Shutdown
     # Remove tmux hooks
     callback.remove_tmux_hooks()
 
@@ -46,6 +39,15 @@ async def shutdown():
     # Clean up recorders
     for recorder in recorders.values():
         recorder.stop_recording()
+
+
+app = FastAPI(title="tvmux server", lifespan=lifespan)
+
+# Include routers
+app.include_router(session.router, prefix="/session", tags=["session"])
+app.include_router(window.router, prefix="/window", tags=["window"])
+app.include_router(callback.router, prefix="/callback", tags=["callback"])
+app.include_router(recording.router, prefix="/recording", tags=["recording"])
 
 
 @app.get("/")
