@@ -19,13 +19,16 @@ logger = logging.getLogger(__name__)
 def resolve_id(session_id: str, window_name: str) -> str:
     """Get window ID from window name/index."""
     try:
+        # Use display-message to get the window ID for the specific window
         result = subprocess.run([
-            "tmux", "list-windows", "-t", f"{session_id}:{window_name}",
-            "-F", "#{window_id}"
+            "tmux", "display-message", "-t", f"{session_id}:{window_name}",
+            "-p", "#{window_id}"
         ], capture_output=True, text=True)
 
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            window_id = result.stdout.strip()
+            logger.debug(f"tmux returned window_id: {repr(window_id)}")
+            return window_id
 
         # Fallback: assume it's already a window_id
         return window_name
@@ -38,8 +41,8 @@ def display_name(session_id: str, window_id: str) -> str:
     """Get friendly display name for a window ID."""
     try:
         result = subprocess.run([
-            "tmux", "list-windows", "-t", f"{session_id}:{window_id}",
-            "-F", "#{window_name}"
+            "tmux", "display-message", "-t", f"{session_id}:{window_id}",
+            "-p", "#{window_name}"
         ], capture_output=True, text=True)
 
         if result.returncode == 0 and result.stdout.strip():

@@ -4,6 +4,8 @@ import logging
 import re
 from pathlib import Path
 
+import psutil
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,3 +45,24 @@ def safe_filename(name: str) -> str:
     safe = ''.join(c for c in safe if ord(c) >= 32)
     # Truncate if too long
     return safe[:100]
+
+
+def file_has_readers(file_path: str) -> bool:
+    """Check if any process is set up to read from the file."""
+    # For FIFOs, check if there's a tail process waiting to read it
+    # rather than checking open file descriptors (which won't exist until both ends connect)
+    fifo_name = Path(file_path).name
+    logger.debug(f"Looking for tail process for: {fifo_name}")
+
+    for proc in psutil.process_iter(['pid', 'cmdline']):
+        try:
+            cmdline = proc.info['cmdline']
+            if cmdline and 'tail' in cmdline:
+                # Check if this tail command references our FIFO
+                cmdline_str = ' '.join(cmdline)
+                if fifo_name in cmdline_str:
+                    logger.debug(f"Found tail process {proc.info['pid']}: {cmdline_str}")
+                    return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    return False

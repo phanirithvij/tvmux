@@ -153,8 +153,17 @@ def _cleanup_on_exit():
             logger.debug(f"Failed to kill process {pid}: {e}")
 
 
-# Register cleanup on exit
+# Register cleanup on exit and signals
 atexit.register(_cleanup_on_exit)
+
+def _signal_handler(signum, frame):
+    """Handle signals by cleaning up background processes."""
+    logger.debug(f"Received signal {signum}, cleaning up background processes")
+    _cleanup_on_exit()
+
+# Register signal handlers for proper cleanup
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
 
 
 def spawn(cmd: List[str], **kwargs) -> subprocess.Popen:

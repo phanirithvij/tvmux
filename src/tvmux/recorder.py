@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 
-from .utils import get_session_dir, safe_filename
+from .utils import get_session_dir, safe_filename, file_has_readers
 from .repair import repair_cast_file
 from . import background
 
@@ -83,8 +83,8 @@ class Recorder:
         # Get display name for filename (window_name is now window_id, so get the actual name)
         try:
             result = subprocess.run([
-                "tmux", "list-windows", "-t", f"{self.session_id}:{self.window_name}",
-                "-F", "#{window_name}"
+                "tmux", "display-message", "-t", f"{self.session_id}:{self.window_name}",
+                "-p", "#{window_name}"
             ], capture_output=True, text=True)
 
             if result.returncode == 0 and result.stdout.strip():
@@ -309,17 +309,7 @@ class Recorder:
         if not self.state or not self.state.fifo_path.exists():
             return False
 
-        try:
-            # Check if any process has the FIFO open for reading
-            result = subprocess.run(
-                ["lsof", "-t", str(self.state.fifo_path)],
-                capture_output=True,
-                text=True
-            )
-            # lsof -t returns PIDs if any process has the file open
-            return result.returncode == 0 and result.stdout.strip()
-        except Exception:
-            return False
+        return file_has_readers(str(self.state.fifo_path))
 
     async def _wait_for_reader(self, max_retries: int = 30, retry_delay: float = 0.1) -> bool:
         """Wait for asciinema to be ready before starting pipe-pane."""
