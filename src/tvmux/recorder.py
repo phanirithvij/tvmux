@@ -282,8 +282,11 @@ class WindowRecorder:
                 f.write("\033[H")       # Move cursor to home position (1,1)
                 f.write("\033[0m")      # Reset all attributes
 
-                # Write the pane content (strip trailing newlines to prevent scrolling)
-                f.write(content.rstrip('\n'))
+                # Write the pane content with Clear to End of Line on each line to preserve background colors
+                # This replicates the Bash version: sed 's/$/\x1b[K/'
+                lines = content.rstrip('\n').split('\n')
+                processed_content = '\n'.join(line + '\033[K' for line in lines)
+                f.write(processed_content)
 
                 # Restore cursor position (tmux uses 0-based, ANSI uses 1-based)
                 f.write(f"\033[{cursor_y + 1};{cursor_x + 1}H")
