@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 
 from .server.state import SERVER_HOST, SERVER_PORT
+from .utils import safe_filename
 
 
 class Connection:
@@ -15,7 +16,7 @@ class Connection:
 
     def __init__(self):
         self.user = os.getenv("USER", "nobody")
-        self.server_dir = Path(f"/tmp/tvmux-{self.user}")
+        self.server_dir = Path(f"/tmp/tvmux-{safe_filename(self.user)}")
         self.pid_file = self.server_dir / "server.pid"
         self.server_host = SERVER_HOST
         self.server_port = SERVER_PORT

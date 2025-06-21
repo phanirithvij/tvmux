@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 
-from .utils import get_session_dir
+from .utils import get_session_dir, safe_filename
 from .repair import repair_cast_file
 from . import background
 
@@ -67,7 +67,7 @@ class Recorder:
             return False
 
         # Create FIFO
-        safe_window_name = self.window_name.replace("/", "_").replace(" ", "_")
+        safe_window_name = safe_filename(self.window_name)
         fifo_path = self.session_dir / f"window_{safe_window_name}.fifo"
         if fifo_path.exists():
             fifo_path.unlink()
@@ -94,8 +94,8 @@ class Recorder:
         except:
             display_name = self.window_name
 
-        safe_window_name = display_name.replace("/", "_").replace(" ", "_")
-        cast_filename = f"{timestamp}_{self.hostname}_{self.session_id}_{safe_window_name}.cast"
+        safe_window_name = safe_filename(display_name)
+        cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.session_id)}_{safe_window_name}.cast"
         cast_path = date_dir / cast_filename
 
         # Initialize state
@@ -233,13 +233,23 @@ class Recorder:
             "/dev/null"
         ]
 
+        logger.debug(f"Starting asciinema with command: {cmd}")
+
         # Start process using background manager for automatic cleanup
         proc = background.spawn(cmd)
         self.state.asciinema_pid = proc.pid
 
-        # Wait for process to be ready
-        # TODO: Better readiness check
-        await asyncio.sleep(1)
+        logger.debug(f"Started asciinema process with PID: {proc.pid}")
+
+        # Wait for process to be ready and check if it's alive
+        await asyncio.sleep(2)
+
+        try:
+            os.kill(proc.pid, 0)
+            logger.debug(f"Asciinema process {proc.pid} is still running")
+        except ProcessLookupError:
+            logger.error(f"Asciinema process {proc.pid} died immediately")
+            return False
 
         return True
 
@@ -300,20 +310,23 @@ class Recorder:
             return False
 
         try:
-            # Check for any process reading this specific FIFO
-            # Use lsof to see if the FIFO has readers
+            # Check if any process has the FIFO open for reading
             result = subprocess.run(
-                ["lsof", str(self.state.fifo_path)],
-                capture_output=True
+                ["lsof", "-t", str(self.state.fifo_path)],
+                capture_output=True,
+                text=True
             )
-            return result.returncode == 0
+            # lsof -t returns PIDs if any process has the file open
+            return result.returncode == 0 and result.stdout.strip()
         except Exception:
             return False
 
     async def _wait_for_reader(self, max_retries: int = 30, retry_delay: float = 0.1) -> bool:
         """Wait for asciinema to be ready before starting pipe-pane."""
         for attempt in range(max_retries):
-            if self._has_reader():
+            has_reader = self._has_reader()
+            logger.debug(f"Attempt {attempt + 1}: FIFO reader check = {has_reader}")
+            if has_reader:
                 logger.debug(f"FIFO reader ready after {attempt + 1} attempts")
                 return True
             await asyncio.sleep(retry_delay)

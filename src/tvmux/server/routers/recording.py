@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from ...recorder import Recorder
+from ...utils import safe_filename
 from ..state import recorders
 
 logger = logging.getLogger(__name__)

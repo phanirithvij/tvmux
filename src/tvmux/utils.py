@@ -33,3 +33,13 @@ def get_session_dir(hostname: str, session_name: str, tmux_var: str, base_dir: s
 
     session_dir_name = f"session_{hostname}_{clean_session}_{hash_suffix}"
     return Path(base_dir) / session_dir_name
+
+
+def safe_filename(name: str) -> str:
+    """Make a string safe for use as a filename."""
+    # Replace problematic characters with underscores
+    safe = re.sub(r'[/\\\n\r\t\0<>:"|?*]', '_', name)
+    # Remove any remaining control characters
+    safe = ''.join(c for c in safe if ord(c) >= 32)
+    # Truncate if too long
+    return safe[:100]
