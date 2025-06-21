@@ -1,5 +1,4 @@
 """Callback endpoints for tmux hooks."""
-import json
 import logging
 import shlex
 import subprocess
@@ -149,7 +148,7 @@ async def _process_callback_event(event: CallbackEvent) -> str:
 def setup_tmux_hooks():
     """Set up tmux hooks to call our callbacks."""
 
-    base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callback"
+    base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callbacks"
 
     # Define hooks we want to monitor
     hooks = [

@@ -64,61 +64,64 @@ def display_name(session_id: str, window_id: str) -> str:
 router = APIRouter()
 
 
-class StartRecordingRequest(BaseModel):
+class RecordingCreate(BaseModel):
     """Request to start recording a window."""
     session_id: str
-    window_name: str  # Can be window name, index, or ID
+    window_id: str  # Window ID to record
     active_pane: str
     output_dir: Optional[str] = None
 
 
-class RecordingStatus(BaseModel):
-    """Status of a recording."""
+class Recording(BaseModel):
+    """Recording resource."""
+    id: str  # session:window_id
     session_id: str
-    window_name: str
+    window_id: str
     recording: bool
     cast_path: Optional[str] = None
     active_pane: Optional[str] = None
 
 
-@router.post("/start")
-async def start(request: StartRecordingRequest) -> RecordingStatus:
-    # Always use window_id as the stable key
-    window_id = resolve_id(request.session_id, request.window_name)
-    recorder_key = f"{request.session_id}:{window_id}"
+@router.post("/", response_model=Recording)
+async def create_recording(recording: RecordingCreate) -> Recording:
+    """Start a new recording."""
+    # Create unique ID from session and window
+    recording_id = f"{recording.session_id}:{recording.window_id}"
 
     # Check if already recording
-    if recorder_key in recorders:
-        recorder = recorders[recorder_key]
+    if recording_id in recorders:
+        recorder = recorders[recording_id]
         if recorder.state and recorder.state.recording:
-            return RecordingStatus(
-                session_id=request.session_id,
-                window_name=request.window_name,
+            return Recording(
+                id=recording_id,
+                session_id=recording.session_id,
+                window_id=recording.window_id,
                 recording=True,
                 cast_path=str(recorder.state.cast_path),
                 active_pane=recorder.state.active_pane
             )
 
     # Determine output directory
-    if request.output_dir:
-        output_dir = Path(request.output_dir).expanduser()
+    if recording.output_dir:
+        output_dir = Path(recording.output_dir).expanduser()
     else:
         # Default to ~/Videos/tmux
         output_dir = Path.home() / "Videos" / "tmux"
 
     # Create recorder
     recorder = Recorder(
-        session_id=request.session_id,
-        window_id=window_id,
+        session_id=recording.session_id,
+        window_id=recording.window_id,
         output_dir=output_dir
     )
 
     # Start recording
-    if await recorder.start(request.active_pane):
-        recorders[recorder_key] = recorder
-        return RecordingStatus(
-            session_id=request.session_id,
-            window_name=request.window_name,
+    if await recorder.start(recording.active_pane):
+        recorders[recording_id] = recorder
+        return Recording(
+            id=recording_id,
+            session_id=recording.session_id,
+            window_id=recording.window_id,
             recording=True,
             cast_path=str(recorder.state.cast_path) if recorder.state else None,
             active_pane=recorder.state.active_pane if recorder.state else None
@@ -127,20 +130,17 @@ async def start(request: StartRecordingRequest) -> RecordingStatus:
         raise HTTPException(status_code=500, detail="Failed to start recording")
 
 
-@router.post("/stop")
-async def stop(session_id: str, window_name: str) -> RecordingStatus:
-    # Always use window_id as the stable key
-    window_id = resolve_id(session_id, window_name)
-    recorder_key = f"{session_id}:{window_id}"
-
-    if recorder_key not in recorders:
+@router.delete("/{recording_id}")
+async def delete_recording(recording_id: str) -> dict:
+    """Stop a recording."""
+    if recording_id not in recorders:
         raise HTTPException(status_code=404, detail="Recording not found")
 
-    recorder = recorders[recorder_key]
+    recorder = recorders[recording_id]
     recorder.stop()
 
     # Remove from active recorders
-    del recorders[recorder_key]
+    del recorders[recording_id]
 
     # Auto-shutdown server if no more recordings
     if not recorders:
@@ -148,11 +148,7 @@ async def stop(session_id: str, window_name: str) -> RecordingStatus:
         # Schedule shutdown after a brief delay to allow response to be sent
         asyncio.create_task(_shutdown_server_delayed())
 
-    return RecordingStatus(
-        session_id=session_id,
-        window_name=window_name,
-        recording=False
-    )
+    return {"status": "stopped", "recording_id": recording_id}
 
 
 async def _shutdown_server_delayed():
@@ -164,35 +160,35 @@ async def _shutdown_server_delayed():
     os.kill(os.getpid(), signal.SIGTERM)
 
 
-@router.get("/status")
-async def status(session_id: str, window_name: str) -> RecordingStatus:
-    recorder_key = f"{session_id}:{window_name}"
+@router.get("/{recording_id}", response_model=Recording)
+async def get_recording(recording_id: str) -> Recording:
+    """Get recording status."""
+    if recording_id not in recorders:
+        raise HTTPException(status_code=404, detail="Recording not found")
 
-    if recorder_key not in recorders:
-        return RecordingStatus(
-            session_id=session_id,
-            window_name=window_name,
-            recording=False
-        )
+    recorder = recorders[recording_id]
+    session_id, window_id = recording_id.split(":", 1)
 
-    recorder = recorders[recorder_key]
-    return RecordingStatus(
+    return Recording(
+        id=recording_id,
         session_id=session_id,
-        window_name=window_name,
+        window_id=window_id,
         recording=recorder.state.recording if recorder.state else False,
         cast_path=str(recorder.state.cast_path) if recorder.state else None,
         active_pane=recorder.state.active_pane if recorder.state else None
     )
 
 
-@router.get("/list")
-async def list() -> list[RecordingStatus]:
+@router.get("/", response_model=list[Recording])
+async def list_recordings() -> list[Recording]:
+    """List all active recordings."""
     result = []
-    for key, recorder in recorders.items():
-        session_id, window_name = key.split(":", 1)
-        result.append(RecordingStatus(
+    for recording_id, recorder in recorders.items():
+        session_id, window_id = recording_id.split(":", 1)
+        result.append(Recording(
+            id=recording_id,
             session_id=session_id,
-            window_name=window_name,
+            window_id=window_id,
             recording=recorder.state.recording if recorder.state else False,
             cast_path=str(recorder.state.cast_path) if recorder.state else None,
             active_pane=recorder.state.active_pane if recorder.state else None

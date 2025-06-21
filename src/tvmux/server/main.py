@@ -9,7 +9,7 @@ from fastapi import FastAPI
 import uvicorn
 
 from .state import server_dir, recorders, SERVER_HOST, SERVER_PORT
-from .routers import session, window, callback, recording
+from .routers import session, window, panes, callback, recording
 
 
 def setup_logging():
@@ -74,10 +74,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="tvmux server", lifespan=lifespan)
 
 # Include routers
-app.include_router(session.router, prefix="/session", tags=["session"])
-app.include_router(window.router, prefix="/window", tags=["window"])
-app.include_router(callback.router, prefix="/callback", tags=["callback"])
-app.include_router(recording.router, prefix="/recording", tags=["recording"])
+app.include_router(session.router, prefix="/sessions", tags=["sessions"])
+app.include_router(window.router, prefix="/windows", tags=["windows"])
+app.include_router(panes.router, prefix="/panes", tags=["panes"])
+app.include_router(callback.router, prefix="/callbacks", tags=["callbacks"])
+app.include_router(recording.router, prefix="/recordings", tags=["recordings"])
 
 
 @app.get("/")
