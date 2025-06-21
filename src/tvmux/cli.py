@@ -104,12 +104,12 @@ def start():
     try:
         info = subprocess.run(
             ["tmux", "display-message", "-p",
-             "#{session_name}:#{window_name}:#{pane_id}"],
+             "#{session_name}:#{window_id}:#{pane_id}"],
             capture_output=True,
             text=True,
             check=True
         )
-        session_name, window_name, pane_id = info.stdout.strip().split(":")
+        session_name, window_id, pane_id = info.stdout.strip().split(":")
     except subprocess.CalledProcessError:
         click.echo("Failed to get tmux info", err=True)
         raise click.Abort()
@@ -119,13 +119,13 @@ def start():
         api = conn.client()
         response = api.post("/recording/start", json={
             "session_id": session_name,
-            "window_name": window_name,
+            "window_name": window_id,
             "active_pane": pane_id
         })
 
         if response.status_code == 200:
             data = response.json()
-            click.echo(f"Started recording window '{window_name}' in session '{session_name}'")
+            click.echo(f"Started recording window '{window_id}' in session '{session_name}'")
             click.echo(f"Recording to: {data['cast_path']}")
         else:
             click.echo(f"Failed to start recording: {response.text}", err=True)
@@ -183,12 +183,12 @@ def stop():
     try:
         info = subprocess.run(
             ["tmux", "display-message", "-p",
-             "#{session_name}:#{window_name}"],
+             "#{session_name}:#{window_id}"],
             capture_output=True,
             text=True,
             check=True
         )
-        session_name, window_name = info.stdout.strip().split(":")
+        session_name, window_id = info.stdout.strip().split(":")
     except subprocess.CalledProcessError:
         click.echo("Failed to get tmux info", err=True)
         raise click.Abort()
@@ -196,7 +196,7 @@ def stop():
     # Call API to stop recording
     try:
         api = conn.client()
-        response = api.post(f"/recording/stop?session_id={session_name}&window_name={window_name}")
+        response = api.post(f"/recording/stop?session_id={session_name}&window_name={window_id}")
 
         if response.status_code == 200:
             click.echo(f"Stopped recording window in session '{session_name}'")

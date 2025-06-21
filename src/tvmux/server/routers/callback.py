@@ -118,8 +118,8 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         # Active pane changed within a window
         logger.debug(f"Pane select event: session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
 
-        if event.session_name and event.window_name:
-            recorder_key = f"{event.session_name}:{event.window_name}"
+        if event.session_name and event.window_id:
+            recorder_key = f"{event.session_name}:{event.window_id}"
             logger.debug(f"Looking for recorder with key: {recorder_key}")
             logger.debug(f"Available recorders: {list(recorders.keys())}")
 
