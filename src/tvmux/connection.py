@@ -7,14 +7,14 @@ from typing import Optional
 
 import httpx
 
+from .server.state import SERVER_HOST, SERVER_PORT
+
 
 class Connection:
     """Manages connection to tvmux server."""
 
     def __init__(self):
         """Initialize connection."""
-        from .server.state import SERVER_HOST, SERVER_PORT
-
         self.user = os.getenv("USER", "nobody")
         self.server_dir = Path(f"/tmp/tvmux-{self.user}")
         self.pid_file = self.server_dir / "server.pid"

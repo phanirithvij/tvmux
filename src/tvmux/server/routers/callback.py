@@ -1,5 +1,6 @@
 """Callback endpoints for tmux hooks."""
 import json
+import logging
 import shlex
 import subprocess
 import uuid
@@ -9,6 +10,8 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 from ..state import recorders, SERVER_HOST, SERVER_PORT
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -100,9 +103,6 @@ async def delete_callback(event_id: str) -> Dict[str, str]:
 
 async def _process_callback_event(event: CallbackEvent) -> str:
     """Process a callback event and return the action taken."""
-    import logging
-    logger = logging.getLogger(__name__)
-
     hook_name = event.hook_name
     logger.debug(f"Processing callback: {hook_name}, session={event.session_name}, window={event.window_name}, pane={event.pane_id}")
 

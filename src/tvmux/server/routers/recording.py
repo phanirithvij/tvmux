@@ -1,5 +1,8 @@
 """Recording management endpoints."""
+import asyncio
+import logging
 import os
+import signal
 import subprocess
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -8,6 +11,8 @@ from typing import Optional
 
 from ...recorder import WindowRecorder
 from ..state import recorders
+
+logger = logging.getLogger(__name__)
 
 
 def get_window_id(session_id: str, window_name: str) -> str:
@@ -130,9 +135,6 @@ async def stop_recording(session_id: str, window_name: str) -> RecordingStatus:
 
     # Auto-shutdown server if no more recordings
     if not recorders:
-        import asyncio
-        import logging
-        logger = logging.getLogger(__name__)
         logger.info("No more recordings active, scheduling server shutdown...")
         # Schedule shutdown after a brief delay to allow response to be sent
         asyncio.create_task(_shutdown_server_delayed())
@@ -146,10 +148,6 @@ async def stop_recording(session_id: str, window_name: str) -> RecordingStatus:
 
 async def _shutdown_server_delayed():
     """Shutdown server after a short delay."""
-    import asyncio
-    import os
-    import signal
-
     # Wait a moment to ensure the HTTP response is sent
     await asyncio.sleep(1)
 

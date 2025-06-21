@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """Main CLI entry point for tvmux."""
+import os
+import subprocess
+
 import click
 
 from .connection import Connection
 
 
 @click.group()
+@click.option('--log-level', default='INFO', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
+              help='Set logging level')
 @click.version_option()
-def cli():
+def cli(log_level):
     """Per-window recorder for tmux."""
-    pass
+    os.environ['TVMUX_LOG_LEVEL'] = log_level
 
 
 @cli.group()
@@ -86,9 +91,6 @@ def record():
 @record.command("start")
 def record_start():
     """Start recording current tmux window."""
-    import os
-    import subprocess
-
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running, starting automatically...")
@@ -173,9 +175,6 @@ def record_list():
 @record.command("stop")
 def record_stop():
     """Stop recording current tmux window."""
-    import os
-    import subprocess
-
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running", err=True)
