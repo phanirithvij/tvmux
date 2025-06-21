@@ -14,7 +14,6 @@ class Connection:
     """Manages connection to tvmux server."""
 
     def __init__(self):
-        """Initialize connection."""
         self.user = os.getenv("USER", "nobody")
         self.server_dir = Path(f"/tmp/tvmux-{self.user}")
         self.pid_file = self.server_dir / "server.pid"
@@ -49,7 +48,6 @@ class Connection:
             return False
 
     def start(self) -> bool:
-        """Start the server."""
         if self.is_running:
             print(f"Server already running (PID: {self.server_pid})")
             return True
@@ -84,7 +82,6 @@ class Connection:
         return False
 
     def stop(self) -> bool:
-        """Stop the server."""
         pid = self.server_pid
         if not pid:
             print("Server not running")
@@ -116,18 +113,11 @@ class Connection:
             return False
 
     def client(self) -> httpx.Client:
-        """Get HTTP client connected to server."""
         if not self.is_running:
             raise RuntimeError("Server not running")
 
         return httpx.Client(base_url=self.base_url)
 
-    async def async_client(self) -> httpx.AsyncClient:
-        """Get async HTTP client connected to server."""
-        if not self.is_running:
-            raise RuntimeError("Server not running")
-
-        return httpx.AsyncClient(base_url=self.base_url)
 
     def api(self):
         """Get API client with typed methods matching the server routes."""

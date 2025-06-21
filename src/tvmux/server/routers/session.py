@@ -37,7 +37,6 @@ class SessionWindows(BaseModel):
 # Session operations
 @router.get("/", response_model=List[Session])
 async def list():
-    """List all tmux sessions."""
     result = subprocess.run(
         ["tmux", "list-sessions", "-F",
          "#{session_name}|#{session_id}|#{session_created}|#{session_attached}|#{session_windows}|#{session_width}x#{session_height}"],
@@ -65,7 +64,6 @@ async def list():
 
 @router.get("/{name}", response_model=Session)
 async def get(name: str):
-    """Get a specific session."""
     sessions = await list()
     for session in sessions:
         if session.name == name:
@@ -75,7 +73,6 @@ async def get(name: str):
 
 @router.post("/", response_model=Session)
 async def create(session: SessionCreate):
-    """Create a new tmux session."""
     cmd = ["tmux", "new-session", "-d", "-s", session.name, "-c", session.start_directory]
     if session.window_name:
         cmd.extend(["-n", session.window_name])
@@ -108,7 +105,6 @@ async def update(name: str, update: SessionUpdate):
 
 @router.delete("/{name}")
 async def delete(name: str):
-    """Kill a tmux session."""
     result = subprocess.run(
         ["tmux", "kill-session", "-t", name],
         capture_output=True,

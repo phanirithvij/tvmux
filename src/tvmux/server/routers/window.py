@@ -36,7 +36,6 @@ class PaneCreate(BaseModel):
 # Window operations
 @router.get("/", response_model=List[Window])
 async def list():
-    """List all tmux windows across all sessions."""
     cmd = ["tmux", "list-windows", "-a", "-F",
            "#{window_id}|#{window_name}|#{window_active}|#{window_panes}|#{window_width}x#{window_height}|#{window_layout}|#{session_name}|#{window_index}"]
 
@@ -61,7 +60,6 @@ async def list():
 
 @router.get("/{window_id}", response_model=Window)
 async def get(window_id: str):
-    """Get a specific window by ID."""
     windows = await list()
     for window in windows:
         if window.id == window_id:
@@ -71,7 +69,6 @@ async def get(window_id: str):
 
 @router.post("/", response_model=Window)
 async def create(window: WindowCreate):
-    """Create a new tmux window."""
     if window.session:
         cmd = ["tmux", "new-window", "-d", "-t", window.session, "-P", "-F", "#{window_id}"]
     else:

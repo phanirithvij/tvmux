@@ -25,7 +25,6 @@ def server():
 
 @server.command("start")
 def start():
-    """Start the tvmux server."""
     conn = Connection()
     if conn.start():
         click.echo(f"Server running at {conn.base_url}")
@@ -36,7 +35,6 @@ def start():
 
 @server.command("stop")
 def stop():
-    """Stop the tvmux server."""
     conn = Connection()
     if conn.stop():
         click.echo("Server stopped")
@@ -47,7 +45,6 @@ def stop():
 
 @server.command("status")
 def status():
-    """Check server status."""
     conn = Connection()
     if conn.is_running:
         click.echo(f"Server running at {conn.base_url} (PID: {conn.server_pid})")
@@ -90,7 +87,6 @@ def record():
 
 @record.command("start")
 def start():
-    """Start recording current tmux window."""
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running, starting automatically...")
@@ -142,7 +138,6 @@ def start():
 
 @record.command("list")
 def list():
-    """List active recordings."""
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running", err=True)
@@ -174,7 +169,6 @@ def list():
 
 @record.command("stop")
 def stop():
-    """Stop recording current tmux window."""
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running", err=True)

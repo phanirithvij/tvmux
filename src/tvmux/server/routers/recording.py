@@ -72,7 +72,6 @@ class RecordingStatus(BaseModel):
 
 @router.post("/start")
 async def start(request: StartRecordingRequest) -> RecordingStatus:
-    """Start recording a window."""
     # Always use window_id as the stable key
     window_id = get_window_id(request.session_id, request.window_name)
     recorder_key = f"{request.session_id}:{window_id}"
@@ -119,7 +118,6 @@ async def start(request: StartRecordingRequest) -> RecordingStatus:
 
 @router.post("/stop")
 async def stop(session_id: str, window_name: str) -> RecordingStatus:
-    """Stop recording a window."""
     # Always use window_id as the stable key
     window_id = get_window_id(session_id, window_name)
     recorder_key = f"{session_id}:{window_id}"
@@ -157,7 +155,6 @@ async def _shutdown_server_delayed():
 
 @router.get("/status")
 async def status(session_id: str, window_name: str) -> RecordingStatus:
-    """Get recording status for a window."""
     recorder_key = f"{session_id}:{window_name}"
 
     if recorder_key not in recorders:
@@ -179,7 +176,6 @@ async def status(session_id: str, window_name: str) -> RecordingStatus:
 
 @router.get("/list")
 async def list() -> list[RecordingStatus]:
-    """List all active recordings."""
     result = []
     for key, recorder in recorders.items():
         session_id, window_name = key.split(":", 1)
