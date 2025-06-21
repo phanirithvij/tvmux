@@ -86,11 +86,10 @@ class WindowRecorder:
         # Generate cast filename using display name
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
 
-        # Get display name for filename (falls back to window_id if needed)
+        # Get display name for filename (window_name is now window_id, so get the actual name)
         try:
-            import subprocess
             result = subprocess.run([
-                "tmux", "list-windows", "-t", self.session_id, "-f", f"#{{{self.window_name}}}",
+                "tmux", "list-windows", "-t", f"{self.session_id}:{self.window_name}",
                 "-F", "#{window_name}"
             ], capture_output=True, text=True)
 

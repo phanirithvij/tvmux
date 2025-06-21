@@ -14,7 +14,7 @@ def get_window_id(session_id: str, window_name: str) -> str:
     """Get window ID from window name/index."""
     try:
         result = subprocess.run([
-            "tmux", "list-windows", "-t", session_id, "-f", f"#{{{window_name}}}",
+            "tmux", "list-windows", "-t", f"{session_id}:{window_name}",
             "-F", "#{window_id}"
         ], capture_output=True, text=True)
 
@@ -32,7 +32,7 @@ def get_window_display_name(session_id: str, window_id: str) -> str:
     """Get friendly display name for a window ID."""
     try:
         result = subprocess.run([
-            "tmux", "list-windows", "-t", session_id, "-f", f"#{{{window_id}}}",
+            "tmux", "list-windows", "-t", f"{session_id}:{window_id}",
             "-F", "#{window_name}"
         ], capture_output=True, text=True)
 
