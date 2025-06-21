@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from ...recorder import WindowRecorder
+from ...recorder import Recorder
 from ..state import recorders
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ class RecordingStatus(BaseModel):
 
 
 @router.post("/start")
-async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
+async def start(request: StartRecordingRequest) -> RecordingStatus:
     """Start recording a window."""
     # Always use window_id as the stable key
     window_id = get_window_id(request.session_id, request.window_name)
@@ -97,14 +97,14 @@ async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
         output_dir = Path.home() / "Videos" / "tmux"
 
     # Create recorder
-    recorder = WindowRecorder(
+    recorder = Recorder(
         session_id=request.session_id,
         window_name=window_id,
         output_dir=output_dir
     )
 
     # Start recording
-    if await recorder.start_recording(request.active_pane):
+    if await recorder.start(request.active_pane):
         recorders[recorder_key] = recorder
         return RecordingStatus(
             session_id=request.session_id,
@@ -118,7 +118,7 @@ async def start_recording(request: StartRecordingRequest) -> RecordingStatus:
 
 
 @router.post("/stop")
-async def stop_recording(session_id: str, window_name: str) -> RecordingStatus:
+async def stop(session_id: str, window_name: str) -> RecordingStatus:
     """Stop recording a window."""
     # Always use window_id as the stable key
     window_id = get_window_id(session_id, window_name)
@@ -128,7 +128,7 @@ async def stop_recording(session_id: str, window_name: str) -> RecordingStatus:
         raise HTTPException(status_code=404, detail="Recording not found")
 
     recorder = recorders[recorder_key]
-    recorder.stop_recording()
+    recorder.stop()
 
     # Remove from active recorders
     del recorders[recorder_key]
@@ -156,7 +156,7 @@ async def _shutdown_server_delayed():
 
 
 @router.get("/status")
-async def get_recording_status(session_id: str, window_name: str) -> RecordingStatus:
+async def status(session_id: str, window_name: str) -> RecordingStatus:
     """Get recording status for a window."""
     recorder_key = f"{session_id}:{window_name}"
 
@@ -178,7 +178,7 @@ async def get_recording_status(session_id: str, window_name: str) -> RecordingSt
 
 
 @router.get("/list")
-async def list_recordings() -> list[RecordingStatus]:
+async def list() -> list[RecordingStatus]:
     """List all active recordings."""
     result = []
     for key, recorder in recorders.items():

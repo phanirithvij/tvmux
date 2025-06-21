@@ -3,10 +3,10 @@ import os
 from pathlib import Path
 from typing import Dict
 
-from ..recorder import WindowRecorder
+from ..recorder import Recorder
 
 # Global state - key is "session:window" ID
-recorders: Dict[str, WindowRecorder] = {}
+recorders: Dict[str, Recorder] = {}
 server_dir = Path(f"/tmp/tvmux-{os.getenv('USER', 'nobody')}")
 
 # Server configuration

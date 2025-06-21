@@ -35,7 +35,7 @@ class PaneCreate(BaseModel):
 
 # Window operations
 @router.get("/", response_model=List[Window])
-async def list_windows():
+async def list():
     """List all tmux windows across all sessions."""
     cmd = ["tmux", "list-windows", "-a", "-F",
            "#{window_id}|#{window_name}|#{window_active}|#{window_panes}|#{window_width}x#{window_height}|#{window_layout}|#{session_name}|#{window_index}"]
@@ -60,9 +60,9 @@ async def list_windows():
 
 
 @router.get("/{window_id}", response_model=Window)
-async def get_window(window_id: str):
+async def get(window_id: str):
     """Get a specific window by ID."""
-    windows = await list_windows()
+    windows = await list()
     for window in windows:
         if window.id == window_id:
             return window
@@ -70,7 +70,7 @@ async def get_window(window_id: str):
 
 
 @router.post("/", response_model=Window)
-async def create_window(window: WindowCreate):
+async def create(window: WindowCreate):
     """Create a new tmux window."""
     if window.session:
         cmd = ["tmux", "new-window", "-d", "-t", window.session, "-P", "-F", "#{window_id}"]
@@ -93,7 +93,7 @@ async def create_window(window: WindowCreate):
         raise HTTPException(status_code=400, detail=f"Failed to create window: {result.stderr}")
 
     new_window_id = result.stdout.strip()
-    return await get_window(new_window_id)
+    return await get(new_window_id)
 
 
 @router.patch("/{window_id}")

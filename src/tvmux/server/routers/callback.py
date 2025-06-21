@@ -128,7 +128,7 @@ async def _process_callback_event(event: CallbackEvent) -> str:
                 recorder = recorders[recorder_key]
                 if event.pane_id:
                     logger.info(f"Triggering pane switch to {event.pane_id} for recorder {recorder_key}")
-                    recorder.switch_active_pane(event.pane_id)
+                    recorder.switch_pane(event.pane_id)
                 else:
                     logger.warning(f"No pane_id in select-pane event")
             else:

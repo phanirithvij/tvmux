@@ -36,7 +36,7 @@ class SessionWindows(BaseModel):
 
 # Session operations
 @router.get("/", response_model=List[Session])
-async def list_sessions():
+async def list():
     """List all tmux sessions."""
     result = subprocess.run(
         ["tmux", "list-sessions", "-F",
@@ -64,9 +64,9 @@ async def list_sessions():
 
 
 @router.get("/{name}", response_model=Session)
-async def get_session(name: str):
+async def get(name: str):
     """Get a specific session."""
-    sessions = await list_sessions()
+    sessions = await list()
     for session in sessions:
         if session.name == name:
             return session
@@ -74,7 +74,7 @@ async def get_session(name: str):
 
 
 @router.post("/", response_model=Session)
-async def create_session(session: SessionCreate):
+async def create(session: SessionCreate):
     """Create a new tmux session."""
     cmd = ["tmux", "new-session", "-d", "-s", session.name, "-c", session.start_directory]
     if session.window_name:
@@ -85,11 +85,11 @@ async def create_session(session: SessionCreate):
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Failed to create session: {result.stderr}")
 
-    return await get_session(session.name)
+    return await get(session.name)
 
 
 @router.patch("/{name}")
-async def update_session(name: str, update: SessionUpdate):
+async def update(name: str, update: SessionUpdate):
     """Update a session (rename)."""
     if update.new_name:
         result = subprocess.run(
@@ -101,13 +101,13 @@ async def update_session(name: str, update: SessionUpdate):
         if result.returncode != 0:
             raise HTTPException(status_code=400, detail=f"Failed to rename session: {result.stderr}")
 
-        return await get_session(update.new_name)
+        return await get(update.new_name)
 
-    return await get_session(name)
+    return await get(name)
 
 
 @router.delete("/{name}")
-async def delete_session(name: str):
+async def delete(name: str):
     """Kill a tmux session."""
     result = subprocess.run(
         ["tmux", "kill-session", "-t", name],

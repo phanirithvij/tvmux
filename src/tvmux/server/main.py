@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
 
     # Clean up recorders
     for recorder in recorders.values():
-        recorder.stop_recording()
+        recorder.stop()
 
 
 app = FastAPI(title="tvmux server", lifespan=lifespan)
@@ -102,7 +102,7 @@ def cleanup_and_exit(signum=None, frame=None):
     print(f"Stopping {len(recorders)} active recordings...")
     for recorder in recorders.values():
         try:
-            recorder.stop_recording()
+            recorder.stop()
         except Exception as e:
             print(f"Error stopping recorder: {e}")
 

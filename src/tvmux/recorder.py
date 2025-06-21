@@ -28,7 +28,7 @@ class RecordingState:
     recording: bool = False
 
 
-class WindowRecorder:
+class Recorder:
     """Records a single tmux window by following the active pane."""
 
     def __init__(self, session_id: str, window_name: str, output_dir: Path):
@@ -60,15 +60,8 @@ class WindowRecorder:
         self.state: Optional[RecordingState] = None
         self._running = False
 
-    async def start_recording(self, active_pane: str) -> bool:
-        """Start recording this window.
-
-        Args:
-            active_pane: Currently active pane ID
-
-        Returns:
-            True if recording started successfully
-        """
+    async def start(self, active_pane: str) -> bool:
+        """Start recording this window."""
         if self.state and self.state.recording:
             logger.warning(f"Window {self.window_name} already recording")
             return False
@@ -127,15 +120,15 @@ class WindowRecorder:
                 return True
             else:
                 logger.error("Asciinema reader not ready, stopping")
-                self.stop_recording()
+                self.stop()
                 return False
         else:
             logger.error(f"Failed to start recording for window {self.window_name}")
             return False
 
-    def switch_active_pane(self, new_pane_id: str):
+    def switch_pane(self, new_pane_id: str):
         """Switch recording to a different pane in the window."""
-        logger.debug(f"switch_active_pane called: new_pane_id={new_pane_id}, window={self.window_name}")
+        logger.debug(f"switch_pane called: new_pane_id={new_pane_id}, window={self.window_name}")
 
         if not self.state or not self.state.recording:
             logger.warning(f"Window {self.window_name} not recording, state={self.state}, recording={self.state.recording if self.state else None}")
@@ -160,7 +153,7 @@ class WindowRecorder:
         self.state.active_pane = new_pane_id
         logger.info(f"Successfully switched to pane {new_pane_id} in window {self.window_name}")
 
-    def stop_recording(self) -> bool:
+    def stop(self) -> bool:
         """Stop recording this window."""
         if not self.state or not self.state.recording:
             return False
