@@ -97,10 +97,21 @@ async def root():
 def cleanup_and_exit(signum=None, frame=None):
     """Clean up and exit gracefully."""
     print("\nCleaning up...")
+
+    # Stop all recorders first (kills asciinema processes)
+    print(f"Stopping {len(recorders)} active recordings...")
+    for recorder in recorders.values():
+        try:
+            recorder.stop_recording()
+        except Exception as e:
+            print(f"Error stopping recorder: {e}")
+
     # Remove tmux hooks
     callback.remove_tmux_hooks()
+
     # Remove PID file
     (server_dir / "server.pid").unlink(missing_ok=True)
+
     sys.exit(0)
 
 

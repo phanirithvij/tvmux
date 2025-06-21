@@ -9,8 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 
-from .utils import get_session_dir, kill_process_tree
+from .utils import get_session_dir
 from .repair import repair_cast_file
+from . import background
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ class WindowRecorder:
                 return True
             else:
                 logger.error("Asciinema reader not ready, stopping")
-                await self.stop_recording()
+                self.stop_recording()
                 return False
         else:
             logger.error(f"Failed to start recording for window {self.window_name}")
@@ -191,10 +192,10 @@ class WindowRecorder:
         # Small delay to ensure reset sequences are processed
         time.sleep(0.1)
 
-        # Kill asciinema process tree (includes script, tail, etc.)
+        # Kill asciinema process (background manager handles the tree)
         if self.state.asciinema_pid:
-            logger.debug(f"Killing process tree for PID {self.state.asciinema_pid}")
-            kill_process_tree(self.state.asciinema_pid, timeout=2.0)
+            logger.debug(f"Terminating background process {self.state.asciinema_pid}")
+            background.terminate(self.state.asciinema_pid)
 
         # Now it's safe to clean up FIFO
         if self.state.fifo_path.exists():
@@ -239,8 +240,8 @@ class WindowRecorder:
             "/dev/null"
         ]
 
-        # Start process
-        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Start process using background manager for automatic cleanup
+        proc = background.spawn(cmd)
         self.state.asciinema_pid = proc.pid
 
         # Wait for process to be ready
@@ -306,9 +307,10 @@ class WindowRecorder:
             return False
 
         try:
-            # Check for tail process reading this specific FIFO
+            # Check for any process reading this specific FIFO
+            # Use lsof to see if the FIFO has readers
             result = subprocess.run(
-                ["pgrep", "-f", f"tail -F {self.state.fifo_path}"],
+                ["lsof", str(self.state.fifo_path)],
                 capture_output=True
             )
             return result.returncode == 0
