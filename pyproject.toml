@@ -40,4 +40,4 @@ target-version = "py310"
 docstring-code-format = true
 
 [project.scripts]
-tvmux = "tvmux.cli:cli"
+tvmux = "tvmux.cli.main:cli"

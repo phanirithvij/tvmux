@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional
 
 from .utils import get_session_dir, safe_filename, file_has_readers
 from .repair import repair_cast_file
@@ -91,7 +91,7 @@ class Recorder:
                 display_name = result.stdout.strip()
             else:
                 display_name = self.window_name
-        except:
+        except (subprocess.CalledProcessError, ValueError, OSError):
             display_name = self.window_name
 
         safe_window_name = safe_filename(display_name)

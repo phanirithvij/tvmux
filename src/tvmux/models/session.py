@@ -1,5 +1,4 @@
 """Session model for tvmux."""
-from typing import Optional
 
 from pydantic import BaseModel, Field
 from .position import Position

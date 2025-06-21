@@ -5,7 +5,7 @@ import os
 import signal
 import subprocess
 import time
-from typing import List, Optional, Set
+from typing import List, Set
 
 logger = logging.getLogger(__name__)
 

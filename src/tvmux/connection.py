@@ -45,7 +45,7 @@ class Connection:
         try:
             response = httpx.get(f"{self.base_url}/", timeout=1.0)
             return response.status_code == 200
-        except:
+        except (httpx.RequestError, httpx.TimeoutException):
             return False
 
     def start(self) -> bool:
@@ -61,7 +61,7 @@ class Connection:
 
         # Start server in background with logging
         with open(log_file, "w") as log:
-            proc = subprocess.Popen(
+            subprocess.Popen(
                 ["python", "-m", "tvmux.server.main"],
                 stdout=log,
                 stderr=subprocess.STDOUT,

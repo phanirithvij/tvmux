@@ -106,7 +106,7 @@ async def update_window(window_id: str, update: WindowUpdate):
         if result.returncode != 0:
             raise HTTPException(status_code=400, detail=f"Failed to rename window: {result.stderr}")
 
-    return await get_window(window_id)
+    return await get(window_id)
 
 
 @router.delete("/{window_id}")

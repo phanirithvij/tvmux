@@ -121,7 +121,9 @@ async def delete(name: str):
 async def attach_session(name: str):
     """Attach to a session (returns attach command for client to execute)."""
     # Check session exists
-    await get_session(name)
+    sessions = await list()
+    if not any(s.name == name for s in sessions):
+        raise HTTPException(status_code=404, detail=f"Session '{name}' not found")
 
     return {
         "command": f"tmux attach-session -t {name}",
@@ -148,7 +150,9 @@ async def detach_session(name: str):
 async def get_session_windows(name: str):
     """Get all window references for a session."""
     # Check session exists
-    await get_session(name)
+    sessions = await list()
+    if not any(s.name == name for s in sessions):
+        raise HTTPException(status_code=404, detail=f"Session '{name}' not found")
 
     cmd = ["tmux", "list-windows", "-t", name, "-F", "#{window_id}|#{window_index}"]
     result = subprocess.run(cmd, capture_output=True, text=True)

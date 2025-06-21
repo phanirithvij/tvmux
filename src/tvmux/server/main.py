@@ -1,9 +1,7 @@
 """FastAPI server that manages tmux connections."""
-import asyncio
 import logging
 import os
 import signal
-import subprocess
 import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI

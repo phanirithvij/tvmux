@@ -130,11 +130,11 @@ async def _process_callback_event(event: CallbackEvent) -> str:
                     logger.info(f"Triggering pane switch to {event.pane_id} for recorder {recorder_key}")
                     recorder.switch_pane(event.pane_id)
                 else:
-                    logger.warning(f"No pane_id in select-pane event")
+                    logger.warning("No pane_id in select-pane event")
             else:
                 logger.debug(f"No recorder found for {recorder_key}")
         else:
-            logger.warning(f"Missing session_name or window_name in select-pane event")
+            logger.warning("Missing session_name or window_name in select-pane event")
         return "pane_switched"
     elif hook_name == "after-resize-pane":
         return "pane_resized"
