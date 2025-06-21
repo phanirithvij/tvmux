@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict
 
-from .utils import get_session_dir
+from .utils import get_session_dir, kill_process_tree
+from .repair import repair_cast_file
 
 logger = logging.getLogger(__name__)
 
@@ -162,32 +163,23 @@ class WindowRecorder:
         import time
         time.sleep(0.1)
 
-        # Kill asciinema process first, then clean up FIFO
+        # Kill asciinema process tree (includes script, tail, etc.)
         if self.state.asciinema_pid:
-            try:
-                # Send SIGTERM and wait for graceful shutdown
-                os.kill(self.state.asciinema_pid, 15)
-
-                # Wait up to 2 seconds for the process to exit
-                for _ in range(20):
-                    try:
-                        os.kill(self.state.asciinema_pid, 0)  # Check if still running
-                        time.sleep(0.1)
-                    except ProcessLookupError:
-                        break  # Process has exited
-                else:
-                    # Force kill if still running after 2 seconds
-                    try:
-                        os.kill(self.state.asciinema_pid, 9)  # SIGKILL
-                    except ProcessLookupError:
-                        pass
-
-            except ProcessLookupError:
-                pass
+            logger.debug(f"Killing process tree for PID {self.state.asciinema_pid}")
+            kill_process_tree(self.state.asciinema_pid, timeout=2.0)
 
         # Now it's safe to clean up FIFO
         if self.state.fifo_path.exists():
             self.state.fifo_path.unlink()
+
+        # Repair cast file if needed (fixes JSON corruption from abrupt termination)
+        if self.state.cast_path.exists():
+            logger.debug(f"Repairing cast file: {self.state.cast_path}")
+            repair_success = repair_cast_file(self.state.cast_path, backup=True)
+            if repair_success:
+                logger.debug("Cast file repair completed successfully")
+            else:
+                logger.warning("Cast file repair failed")
 
         self.state.recording = False
         logger.info(f"Stopped recording window {self.window_name}")
