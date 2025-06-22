@@ -44,21 +44,18 @@ def status():
             data = api.get("/").json()
 
             # Get sessions
-            sessions = api.get("/session/").json()
+            sessions = api.get("/sessions").json()
 
             # Get windows
-            windows = api.get("/window/").json()
+            windows = api.get("/windows").json()
 
-            # Count total panes
-            total_panes = 0
-            for window in windows:
-                panes = api.get(f"/window/{window['id']}/pane").json()
-                total_panes += len(panes)
+            # Get all panes
+            panes = api.get("/panes").json()
 
             click.echo(f"\nSessions: {len(sessions)}")
             click.echo(f"Windows: {len(windows)}")
-            click.echo(f"Panes: {total_panes}")
-            click.echo(f"Window recorders: {data['recorders']}")
+            click.echo(f"Panes: {len(panes)}")
+            click.echo(f"Active recordings: {data['recorders']}")
 
         except Exception as e:
             click.echo(f"Error querying server: {e}", err=True)

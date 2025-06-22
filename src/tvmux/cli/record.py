@@ -45,9 +45,9 @@ def start():
     # Call API to start recording
     try:
         api = conn.client()
-        response = api.post("/recording/start", json={
+        response = api.post("/recordings", json={
             "session_id": session_name,
-            "window_name": window_id,
+            "window_id": window_id,
             "active_pane": pane_id
         })
 
@@ -74,14 +74,14 @@ def list_recordings():
     # Call API to list recordings
     try:
         api = conn.client()
-        response = api.get("/recording/list")
+        response = api.get("/recordings")
 
         if response.status_code == 200:
             recordings = response.json()
             if recordings:
                 click.echo("Active recordings:")
                 for rec in recordings:
-                    click.echo(f"  - Session: {rec['session_id']}, Window: {rec['window_name']}")
+                    click.echo(f"  - Session: {rec['session_id']}, Window: {rec['window_id']}")
                     if rec.get('cast_path'):
                         click.echo(f"    Recording to: {rec['cast_path']}")
             else:
@@ -124,7 +124,9 @@ def stop():
     # Call API to stop recording
     try:
         api = conn.client()
-        response = api.post(f"/recording/stop?session_id={session_name}&window_name={window_id}")
+        # Create recording ID from session and window
+        recording_id = f"{session_name}:{window_id}"
+        response = api.delete(f"/recordings/{recording_id}")
 
         if response.status_code == 200:
             click.echo(f"Stopped recording window in session '{session_name}'")
