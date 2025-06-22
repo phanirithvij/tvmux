@@ -36,7 +36,12 @@ tvmux is a terminal session recorder that creates asciinema cast files from tmux
 **FastAPI Server (`src/tvmux/server/`):**
 - `main.py` - FastAPI application with lifespan management and tmux hook setup
 - `state.py` - Global state management for recorders and server configuration
-- `routers/` - REST API endpoints for sessions, windows, callbacks, and recordings
+- `routers/` - REST API endpoints:
+  - `/sessions` - Session management
+  - `/windows` - Window management
+  - `/panes` - Pane operations (separate from windows)
+  - `/recordings` - Recording control (RESTful with IDs)
+  - `/callbacks` - tmux hook callbacks
 
 **Recording Engine (`src/tvmux/`):**
 - `recorder.py` - Core recording functionality using asciinema and FIFOs
