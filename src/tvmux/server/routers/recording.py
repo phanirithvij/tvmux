@@ -85,49 +85,64 @@ class Recording(BaseModel):
 @router.post("/", response_model=Recording)
 async def create_recording(recording: RecordingCreate) -> Recording:
     """Start a new recording."""
-    # Create unique ID from session and window
-    recording_id = f"{recording.session_id}:{recording.window_id}"
+    try:
+        logger.info(f"Recording request: session={recording.session_id}, window={recording.window_id}, pane={recording.active_pane}")
 
-    # Check if already recording
-    if recording_id in recorders:
-        recorder = recorders[recording_id]
-        if recorder.state and recorder.state.recording:
+        # Create unique ID from session and window
+        recording_id = f"{recording.session_id}:{recording.window_id}"
+
+        # Check if already recording
+        if recording_id in recorders:
+            recorder = recorders[recording_id]
+            if recorder.state and recorder.state.recording:
+                logger.info(f"Recording already active for {recording_id}")
+                return Recording(
+                    id=recording_id,
+                    session_id=recording.session_id,
+                    window_id=recording.window_id,
+                    recording=True,
+                    cast_path=str(recorder.state.cast_path),
+                    active_pane=recorder.state.active_pane
+                )
+
+        # Determine output directory
+        if recording.output_dir:
+            output_dir = Path(recording.output_dir).expanduser()
+        else:
+            # Default to ~/Videos/tmux
+            output_dir = Path.home() / "Videos" / "tmux"
+
+        logger.info(f"Creating recorder for {recording_id}, output_dir={output_dir}")
+
+        # Create recorder
+        recorder = Recorder(
+            session_id=recording.session_id,
+            window_id=recording.window_id,
+            output_dir=output_dir
+        )
+
+        # Start recording
+        logger.info(f"Starting recording for {recording_id}")
+        if await recorder.start(recording.active_pane):
+            recorders[recording_id] = recorder
+            logger.info(f"Recording started successfully for {recording_id}")
             return Recording(
                 id=recording_id,
                 session_id=recording.session_id,
                 window_id=recording.window_id,
                 recording=True,
-                cast_path=str(recorder.state.cast_path),
-                active_pane=recorder.state.active_pane
+                cast_path=str(recorder.state.cast_path) if recorder.state else None,
+                active_pane=recorder.state.active_pane if recorder.state else None
             )
+        else:
+            logger.error(f"Failed to start recording for {recording_id}")
+            raise HTTPException(status_code=500, detail="Failed to start recording")
 
-    # Determine output directory
-    if recording.output_dir:
-        output_dir = Path(recording.output_dir).expanduser()
-    else:
-        # Default to ~/Videos/tmux
-        output_dir = Path.home() / "Videos" / "tmux"
-
-    # Create recorder
-    recorder = Recorder(
-        session_id=recording.session_id,
-        window_id=recording.window_id,
-        output_dir=output_dir
-    )
-
-    # Start recording
-    if await recorder.start(recording.active_pane):
-        recorders[recording_id] = recorder
-        return Recording(
-            id=recording_id,
-            session_id=recording.session_id,
-            window_id=recording.window_id,
-            recording=True,
-            cast_path=str(recorder.state.cast_path) if recorder.state else None,
-            active_pane=recorder.state.active_pane if recorder.state else None
-        )
-    else:
-        raise HTTPException(status_code=500, detail="Failed to start recording")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Exception in create_recording: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
 @router.delete("/{recording_id}")

@@ -62,68 +62,76 @@ class Recorder:
 
     async def start(self, active_pane: str) -> bool:
         """Start recording this window."""
-        if self.state and self.state.recording:
-            logger.warning(f"Window {self.window_id} already recording")
-            return False
-
-        # Create FIFO
-        safe_window_id = safe_filename(self.window_id)
-        fifo_path = self.session_dir / f"window_{safe_window_id}.fifo"
-        if fifo_path.exists():
-            fifo_path.unlink()
-        os.mkfifo(fifo_path)
-
-        # Create output directory with date
-        date_dir = self.output_dir / datetime.now().strftime("%Y-%m")
-        date_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate cast filename using display name
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-
-        # Get display name for filename
         try:
-            result = subprocess.run([
-                "tmux", "display-message", "-t", f"{self.session_id}:{self.window_id}",
-                "-p", "#{window_name}"
-            ], capture_output=True, text=True)
-
-            if result.returncode == 0 and result.stdout.strip():
-                display_name = result.stdout.strip()
-            else:
-                display_name = self.window_id
-        except (subprocess.CalledProcessError, ValueError, OSError):
-            display_name = self.window_id
-
-        safe_window_name = safe_filename(display_name)
-        cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.session_id)}_{safe_window_name}.cast"
-        cast_path = date_dir / cast_filename
-
-        # Initialize state
-        self.state = RecordingState(
-            window_id=self.window_id,
-            session_name=self.session_id,
-            active_pane=active_pane,
-            asciinema_pid=None,
-            fifo_path=fifo_path,
-            cast_path=cast_path,
-            recording=False
-        )
-
-        # Start asciinema process
-        if await self._start_asciinema():
-            # Wait for asciinema to be ready before starting pipe-pane
-            if await self._wait_for_reader():
-                self.state.recording = True
-                self._dump_pane(active_pane)
-                self._start_streaming(active_pane)
-                logger.info(f"Started recording window {self.window_id} to {cast_path}")
-                return True
-            else:
-                logger.error("Asciinema reader not ready, stopping")
-                self.stop()
+            if self.state and self.state.recording:
+                logger.warning(f"Window {self.window_id} already recording")
                 return False
-        else:
-            logger.error(f"Failed to start recording for window {self.window_id}")
+
+            # Create FIFO
+            safe_window_id = safe_filename(self.window_id)
+            fifo_path = self.session_dir / f"window_{safe_window_id}.fifo"
+            if fifo_path.exists():
+                fifo_path.unlink()
+            os.mkfifo(fifo_path)
+
+            # Create output directory with date
+            date_dir = self.output_dir / datetime.now().strftime("%Y-%m")
+            date_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate cast filename using display name
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+
+            # Get display name for filename
+            try:
+                result = subprocess.run([
+                    "tmux", "display-message", "-t", f"{self.session_id}:{self.window_id}",
+                    "-p", "#{window_name}"
+                ], capture_output=True, text=True)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    display_name = result.stdout.strip()
+                else:
+                    display_name = self.window_id
+            except (subprocess.CalledProcessError, ValueError, OSError):
+                display_name = self.window_id
+
+            safe_window_name = safe_filename(display_name)
+            cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.session_id)}_{safe_window_name}.cast"
+            cast_path = date_dir / cast_filename
+
+            # Initialize state
+            self.state = RecordingState(
+                window_id=self.window_id,
+                session_name=self.session_id,
+                active_pane=active_pane,
+                asciinema_pid=None,
+                fifo_path=fifo_path,
+                cast_path=cast_path,
+                recording=False
+            )
+
+            # Start asciinema process
+            if await self._start_asciinema():
+                # Wait for asciinema to be ready before starting pipe-pane
+                if await self._wait_for_reader():
+                    self.state.recording = True
+                    self._dump_pane(active_pane)
+                    self._start_streaming(active_pane)
+                    logger.info(f"Started recording window {self.window_id} to {cast_path}")
+                    return True
+                else:
+                    logger.error("Asciinema reader not ready, stopping")
+                    self.stop()
+                    return False
+            else:
+                logger.error(f"Failed to start recording for window {self.window_id}")
+                return False
+
+        except Exception as e:
+            logger.exception(f"Exception in start() for window {self.window_id}: {e}")
+            # Clean up on error
+            if self.state:
+                self.stop()
             return False
 
     def switch_pane(self, new_pane_id: str):
@@ -212,43 +220,49 @@ class Recorder:
         if not self.state:
             return False
 
-        # Get terminal dimensions from active pane
-        dims = subprocess.run(
-            ["tmux", "display-message", "-p", "-t", self.state.active_pane,
-             "#{pane_width} #{pane_height}"],
-            capture_output=True,
-            text=True
-        )
-        if dims.returncode == 0:
-            width, height = dims.stdout.strip().split()
-        else:
-            width, height = "80", "24"
-
-        # Build asciinema command
-        cmd = [
-            "script", "-qfc",
-            f"stty rows {height} cols {width} 2>/dev/null; "
-            f"asciinema rec \"{self.state.cast_path}\" "
-            f"-c \"stdbuf -o0 tail -F {self.state.fifo_path} 2>&1\"",
-            "/dev/null"
-        ]
-
-        logger.debug(f"Starting asciinema with command: {cmd}")
-
-        # Start process using background manager for automatic cleanup
-        proc = background.spawn(cmd)
-        self.state.asciinema_pid = proc.pid
-
-        logger.debug(f"Started asciinema process with PID: {proc.pid}")
-
-        # Wait for process to be ready and check if it's alive
-        await asyncio.sleep(2)
-
         try:
-            os.kill(proc.pid, 0)
-            logger.debug(f"Asciinema process {proc.pid} is still running")
-        except ProcessLookupError:
-            logger.error(f"Asciinema process {proc.pid} died immediately")
+            # Get terminal dimensions from active pane
+            dims = subprocess.run(
+                ["tmux", "display-message", "-p", "-t", self.state.active_pane,
+                 "#{pane_width} #{pane_height}"],
+                capture_output=True,
+                text=True
+            )
+            if dims.returncode == 0:
+                width, height = dims.stdout.strip().split()
+            else:
+                width, height = "80", "24"
+
+            # Build asciinema command
+            cmd = [
+                "script", "-qfc",
+                f"stty rows {height} cols {width} 2>/dev/null; "
+                f"asciinema rec \"{self.state.cast_path}\" "
+                f"-c \"stdbuf -o0 tail -F {self.state.fifo_path} 2>&1\"",
+                "/dev/null"
+            ]
+
+            logger.debug(f"Starting asciinema with command: {cmd}")
+
+            # Start process using background manager for automatic cleanup
+            proc = background.spawn(cmd)
+            self.state.asciinema_pid = proc.pid
+
+            logger.debug(f"Started asciinema process with PID: {proc.pid}")
+
+            # Wait for process to be ready and check if it's alive
+            await asyncio.sleep(2)
+
+            try:
+                os.kill(proc.pid, 0)
+                logger.debug(f"Asciinema process {proc.pid} is still running")
+            except ProcessLookupError:
+                logger.error(f"Asciinema process {proc.pid} died immediately")
+                # Check if process wrote any error output
+                return False
+
+        except Exception as e:
+            logger.exception(f"Failed to start asciinema: {e}")
             return False
 
         return True

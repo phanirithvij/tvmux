@@ -18,12 +18,17 @@ def setup_logging():
     log_level = os.getenv('TVMUX_LOG_LEVEL', 'INFO').upper()
 
     # Configure root logger
+    handlers = [logging.StreamHandler()]  # Console output
+
+    # Also log to file if running as daemon
+    log_file = server_dir / "server.log"
+    if log_file.parent.exists():
+        handlers.append(logging.FileHandler(log_file))
+
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.StreamHandler(),  # Console output
-        ]
+        handlers=handlers
     )
 
     # Set specific loggers to appropriate levels
