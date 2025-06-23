@@ -11,7 +11,7 @@ from typing import Optional
 
 from .utils import get_session_dir, safe_filename, file_has_readers
 from .repair import repair_cast_file
-from . import background
+from .proc import bg
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class Recorder:
         # Kill asciinema process (background manager handles the tree)
         if self.state.asciinema_pid:
             logger.debug(f"Terminating background process {self.state.asciinema_pid}")
-            background.terminate(self.state.asciinema_pid)
+            bg.terminate(self.state.asciinema_pid)
 
         # Now it's safe to clean up FIFO
         if self.state.fifo_path.exists():
@@ -245,7 +245,7 @@ class Recorder:
             logger.debug(f"Starting asciinema with command: {cmd}")
 
             # Start process using background manager for automatic cleanup
-            proc = background.spawn(cmd)
+            proc = bg.spawn(cmd)
             self.state.asciinema_pid = proc.pid
 
             logger.debug(f"Started asciinema process with PID: {proc.pid}")

@@ -6,13 +6,13 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 import pytest
 
-from tvmux import background
+from tvmux.proc import bg
 
 
 def test_get_children_no_proc():
     """Test _get_children when /proc doesn't exist."""
     with patch('os.listdir', side_effect=OSError("No such directory")):
-        children = background._get_children(1234)
+        children = bg._get_children(1234)
         assert children == set()
 
 
@@ -38,7 +38,7 @@ def test_get_children_with_proc():
                 raise OSError("No such file")
 
         with patch('builtins.open', mock_open):
-            children = background._get_children(1234)
+            children = bg._get_children(1234)
             assert children == {5678}
 
 
@@ -53,29 +53,29 @@ def test_get_descendants():
         else:
             return set()
 
-    with patch.object(background, '_get_children', side_effect=mock_get_children):
-        descendants = background._get_descendants(1000)
+    with patch.object(bg, '_get_children', side_effect=mock_get_children):
+        descendants = bg._get_descendants(1000)
         assert descendants == {1000, 1001, 1002}
 
 
 def test_terminate_tree_already_dead():
     """Test terminating a process that's already dead."""
     with patch('os.kill', side_effect=ProcessLookupError):
-        result = background._terminate_tree(1234)
+        result = bg._terminate_tree(1234)
         assert result is True
 
 
 def test_terminate_tree_no_permission():
     """Test terminating a process we don't have permission for."""
     with patch('os.kill', side_effect=PermissionError):
-        result = background._terminate_tree(1234)
+        result = bg._terminate_tree(1234)
         assert result is False
 
 
 def test_terminate_tree_graceful_shutdown():
     """Test graceful shutdown with SIGTERM."""
     # Mock process tree
-    with patch.object(background, '_get_descendants', return_value={1234, 5678}):
+    with patch.object(bg, '_get_descendants', return_value={1234, 5678}):
         kill_calls = []
 
         def mock_kill(pid, sig):
@@ -86,7 +86,7 @@ def test_terminate_tree_graceful_shutdown():
 
         with patch('os.kill', side_effect=mock_kill):
             with patch('time.sleep'):  # Don't actually sleep in tests
-                result = background._terminate_tree(1234)
+                result = bg._terminate_tree(1234)
                 assert result is True
                 # Should have sent SIGTERM to both processes
                 assert (1234, signal.SIGTERM) in kill_calls
@@ -101,10 +101,10 @@ def test_spawn_process():
     mock_proc.pid = 1234
 
     with patch('subprocess.Popen', return_value=mock_proc) as mock_popen:
-        proc = background.spawn(['echo', 'test'])
+        proc = bg.spawn(['echo', 'test'])
 
         assert proc == mock_proc
-        assert 1234 in background._managed_processes
+        assert 1234 in bg._managed_processes
 
         # Check default kwargs
         mock_popen.assert_called_once_with(
@@ -121,7 +121,7 @@ def test_spawn_with_custom_kwargs():
     mock_proc.pid = 1234
 
     with patch('subprocess.Popen', return_value=mock_proc) as mock_popen:
-        proc = background.spawn(['echo', 'test'], stdout=subprocess.PIPE)
+        proc = bg.spawn(['echo', 'test'], stdout=subprocess.PIPE)
 
         mock_popen.assert_called_once_with(
             ['echo', 'test'],
@@ -134,26 +134,26 @@ def test_spawn_with_custom_kwargs():
 def test_terminate_tracked_process():
     """Test terminating a tracked process."""
     # Add a fake process to tracking
-    background._managed_processes.add(1234)
+    bg._managed_processes.add(1234)
 
-    with patch.object(background, '_terminate_tree', return_value=True) as mock_term:
-        result = background.terminate(1234)
+    with patch.object(bg, '_terminate_tree', return_value=True) as mock_term:
+        result = bg.terminate(1234)
 
         assert result is True
-        assert 1234 not in background._managed_processes
+        assert 1234 not in bg._managed_processes
         mock_term.assert_called_once_with(1234, timeout=1.0)
 
 
 def test_terminate_untracked_process():
     """Test terminating a process that's not tracked."""
-    result = background.terminate(9999)
+    result = bg.terminate(9999)
     assert result is False
 
 
 def test_reap_dead_processes():
     """Test reaping dead processes from tracking."""
     # Add some processes
-    background._managed_processes.update({1234, 5678, 9999})
+    bg._managed_processes.update({1234, 5678, 9999})
 
     def mock_kill(pid, sig):
         if pid == 5678:  # This one is dead
@@ -161,20 +161,20 @@ def test_reap_dead_processes():
         # Others are alive
 
     with patch('os.kill', side_effect=mock_kill):
-        background.reap()
+        bg.reap()
 
-        assert 1234 in background._managed_processes
-        assert 5678 not in background._managed_processes
-        assert 9999 in background._managed_processes
+        assert 1234 in bg._managed_processes
+        assert 5678 not in bg._managed_processes
+        assert 9999 in bg._managed_processes
 
 
 def test_cleanup_on_exit():
     """Test the cleanup function."""
     # Add some processes
-    background._managed_processes.update({1234, 5678})
+    bg._managed_processes.update({1234, 5678})
 
-    with patch.object(background, '_terminate_tree') as mock_term:
-        background._cleanup_on_exit()
+    with patch.object(bg, '_terminate_tree') as mock_term:
+        bg._cleanup_on_exit()
 
         # Should have tried to terminate both
         assert mock_term.call_count == 2
@@ -184,8 +184,8 @@ def test_cleanup_on_exit():
 
 def test_signal_handler():
     """Test signal handler calls cleanup."""
-    with patch.object(background, '_cleanup_on_exit') as mock_cleanup:
-        background._signal_handler(signal.SIGTERM, None)
+    with patch.object(bg, '_cleanup_on_exit') as mock_cleanup:
+        bg._signal_handler(signal.SIGTERM, None)
         mock_cleanup.assert_called_once()
 
 
@@ -193,11 +193,11 @@ def test_signal_handler():
 def clean_managed_processes():
     """Clean up the global state between tests."""
     # Save current state
-    original = background._managed_processes.copy()
-    background._managed_processes.clear()
+    original = bg._managed_processes.copy()
+    bg._managed_processes.clear()
 
     yield
 
     # Restore state
-    background._managed_processes.clear()
-    background._managed_processes.update(original)
+    bg._managed_processes.clear()
+    bg._managed_processes.update(original)

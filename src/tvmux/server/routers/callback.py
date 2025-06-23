@@ -9,6 +9,9 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 from ..state import recorders, SERVER_HOST, SERVER_PORT
+from ... import proc
+
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +27,8 @@ class CallbackEvent(BaseModel):
     pane_id: Optional[str] = None
     session_name: Optional[str] = None
     window_id: Optional[str] = None
-    window_index: Optional[int] = None
-    pane_index: Optional[int] = None
+    window_index: Optional[str] = None  # Changed to string to handle empty values
+    pane_index: Optional[str] = None    # Changed to string to handle empty values
     pane_pid: Optional[int] = None
     # Any other tmux variables can be passed
     extra: Dict[str, Any] = {}
@@ -104,6 +107,18 @@ async def _process_callback_event(event: CallbackEvent) -> str:
     hook_name = event.hook_name
     logger.debug(f"Processing callback: {hook_name}, session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
 
+    # Log if we get empty critical values
+    if not event.session_name:
+        logger.warning(f"Hook {hook_name} fired with empty session_name")
+    if not event.window_id:
+        logger.warning(f"Hook {hook_name} fired with empty window_id")
+    if not event.pane_id and hook_name in ['after-select-pane', 'after-split-window', 'after-kill-pane']:
+        logger.warning(f"Hook {hook_name} fired with empty pane_id")
+    if not event.window_index:
+        logger.warning(f"Hook {hook_name} fired with empty window_index")
+    if not event.pane_index and hook_name in ['after-select-pane', 'after-split-window', 'after-kill-pane']:
+        logger.warning(f"Hook {hook_name} fired with empty pane_index")
+
     if hook_name == "after-new-session":
         return "session_created"
     elif hook_name == "after-new-window":
@@ -147,8 +162,10 @@ async def _process_callback_event(event: CallbackEvent) -> str:
 
 def setup_tmux_hooks():
     """Set up tmux hooks to call our callbacks."""
+    logger.info("Setting up tmux hooks...")
 
-    base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callbacks"
+    base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callbacks/"
+    logger.debug(f"Using base URL: {base_url}")
 
     # Define hooks we want to monitor
     hooks = [
@@ -163,22 +180,27 @@ def setup_tmux_hooks():
     ]
 
     for hook in hooks:
-        # Simple JSON string with tmux variables - much cleaner than placeholder replacement
-        json_data = (
-            '{"hook_name":"' + hook + '",'
-            '"pane_id":"#{pane_id}",'
-            '"session_name":"#{session_name}",'
-            '"window_id":"#{window_id}",'
-            '"window_index":#{window_index},'
-            '"pane_index":#{pane_index}}'
+        # Create a Pydantic model instance for the JSON payload
+        event = CallbackEvent(
+            hook_name=hook,
+            session_name="#{session_name}",
+            window_id="#{window_id}",
+            pane_id="#{pane_id}",
+            window_index="#{window_index}",
+            pane_index="#{pane_index}"
+        )
+        json_data = event.model_dump_json().replace('"', '\\"')
+
+        hook_cmd = (
+            f'curl -s -X POST {base_url} '
+            f'-H "Content-Type: application/json" '
+            f'-d "{json_data}" >/dev/null 2>&1'
         )
 
-        # Build curl command for the REST endpoint - need to escape quotes properly
-        # Redirect output to /dev/null to avoid polluting the terminal
-        curl_cmd = f'curl -s -X POST {base_url}/ -H "Content-Type: application/json" -d {shlex.quote(json_data)} >/dev/null 2>&1'
+        logger.debug(f"Setting hook {hook} with command: {hook_cmd}")
 
         # Set the hook
-        subprocess.run(["tmux", "set-hook", "-g", hook, f"run-shell '{curl_cmd}'"])
+        proc.run(["tmux", "set-hook", "-g", hook, f"run-shell '{hook_cmd}'"])
 
 
 def remove_tmux_hooks():
