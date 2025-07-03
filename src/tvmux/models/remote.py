@@ -72,4 +72,3 @@ class RemoteModel(BaseModel):
     class Config:
         # Pydantic config
         arbitrary_types_allowed = True
-        underscore_attrs_are_private = True
