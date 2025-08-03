@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
-from ..state import recorders, SERVER_HOST, SERVER_PORT
+from ..state import recorders, SERVER_HOST
 from ... import proc
+from ...config import get_config
 
 import sys
 
@@ -127,6 +128,26 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         return "pane_created"
     elif hook_name == "after-kill-pane":
         return "pane_closed"
+    elif hook_name == "window-unlinked":
+        # Window was destroyed - stop any recording for this window
+        if event.session_name and event.window_id:
+            recorder_key = f"{event.session_name}:{event.window_id}"
+            if recorder_key in recorders:
+                logger.info(f"Window {event.window_id} destroyed, stopping recording {recorder_key}")
+                recorder = recorders[recorder_key]
+                recorder.stop()
+                del recorders[recorder_key]
+        return "window_destroyed"
+    elif hook_name == "session-closed":
+        # Session died - stop all recordings for this session
+        if event.session_name:
+            session_recorders = [key for key in recorders.keys() if key.startswith(f"{event.session_name}:")]
+            for recorder_key in session_recorders:
+                logger.info(f"Session {event.session_name} closed, stopping recording {recorder_key}")
+                recorder = recorders[recorder_key]
+                recorder.stop()
+                del recorders[recorder_key]
+        return "session_destroyed"
     elif hook_name == "after-select-pane":
         # Active pane changed within a window
         logger.debug(f"Pane select event: session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
@@ -164,7 +185,8 @@ def setup_tmux_hooks():
     """Set up tmux hooks to call our callbacks."""
     logger.info("Setting up tmux hooks...")
 
-    base_url = f"http://{SERVER_HOST}:{SERVER_PORT}/callbacks/"
+    config = get_config()
+    base_url = f"http://{SERVER_HOST}:{config.server.port}/callbacks/"
     logger.debug(f"Using base URL: {base_url}")
 
     # Define hooks we want to monitor
@@ -177,6 +199,8 @@ def setup_tmux_hooks():
         "after-rename-window",
         "after-rename-session",
         "after-select-pane",     # When active pane changes
+        "window-unlinked",       # When window is destroyed
+        "session-closed",        # When session ends
     ]
 
     for hook in hooks:
@@ -214,6 +238,8 @@ def remove_tmux_hooks():
         "after-rename-window",
         "after-rename-session",
         "after-select-pane",
+        "window-unlinked",
+        "session-closed",
     ]
 
     for hook in hooks:
