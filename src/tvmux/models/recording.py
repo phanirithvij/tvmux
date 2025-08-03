@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from ..utils import get_session_dir, safe_filename, file_has_readers
 from ..repair import repair_cast_file
 from ..proc import run_bg
+from ..proc import bg
 
 logger = logging.getLogger(__name__)
 
@@ -142,24 +143,9 @@ class Recording(BaseModel):
 
         # Stop asciinema
         if self.asciinema_pid:
-            try:
-                os.kill(self.asciinema_pid, 15)  # SIGTERM
-                # Wait for process to exit
-                for _ in range(50):
-                    try:
-                        os.kill(self.asciinema_pid, 0)
-                        time.sleep(0.1)
-                    except ProcessLookupError:
-                        break
-                else:
-                    logger.warning(f"Asciinema process {self.asciinema_pid} still running after SIGTERM")
-                    # Force kill if still running
-                    try:
-                        os.kill(self.asciinema_pid, 9)  # SIGKILL
-                    except ProcessLookupError:
-                        pass
-            except ProcessLookupError:
-                pass
+            logger.debug(f"Terminating asciinema process tree: {self.asciinema_pid}")
+            if not bg.terminate(self.asciinema_pid):
+                logger.warning(f"Failed to terminate asciinema process tree: {self.asciinema_pid}")
 
         # Clean up FIFO
         if self.fifo_path and self.fifo_path.exists():
