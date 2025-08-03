@@ -104,10 +104,14 @@ async def create_recording(request: RecordingCreate) -> Recording:
     )
 
     # Start recording
-    await recording.start(request.active_pane, output_dir)
-    recorders[recording_id] = recording
-    logger.info(f"Recording started successfully for {recording_id}")
-    return recording
+    try:
+        await recording.start(request.active_pane, output_dir)
+        recorders[recording_id] = recording
+        logger.info(f"Recording started successfully for {recording_id}")
+        return recording
+    except Exception as e:
+        logger.error(f"Failed to start recording for {recording_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{recording_id}")

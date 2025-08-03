@@ -84,7 +84,7 @@ def list_recordings():
     # Call API to list recordings
     try:
         api = conn.client()
-        response = api.get("/recordings")
+        response = api.get("/recordings/")
 
         if response.status_code == 200:
             recordings = response.json()
@@ -136,7 +136,7 @@ def stop():
         api = conn.client()
         # Create recording ID from session and window
         recording_id = f"{session_name}:{window_id}"
-        response = api.delete(f"/recordings/{recording_id}")
+        response = api.delete(f"/recordings/{recording_id}", timeout=10.0)
 
         if response.status_code == 200:
             click.echo(f"Stopped recording window in session '{session_name}'")

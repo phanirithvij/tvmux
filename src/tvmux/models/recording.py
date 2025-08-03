@@ -129,8 +129,16 @@ class Recording(BaseModel):
         # Stop streaming
         self._stop_streaming()
 
-        # Send final reset sequence
+        # Send final reset sequence and close FIFO
         self._write_reset_sequence()
+
+        # Close the FIFO by writing EOF to it - this will cause tail -f to exit
+        try:
+            # Write EOF to the FIFO to signal end of data
+            with open(self.fifo_path, 'w') as f:
+                pass  # Just opening and closing sends EOF
+        except (OSError, IOError):
+            pass
 
         # Stop asciinema
         if self.asciinema_pid:
@@ -145,6 +153,11 @@ class Recording(BaseModel):
                         break
                 else:
                     logger.warning(f"Asciinema process {self.asciinema_pid} still running after SIGTERM")
+                    # Force kill if still running
+                    try:
+                        os.kill(self.asciinema_pid, 9)  # SIGKILL
+                    except ProcessLookupError:
+                        pass
             except ProcessLookupError:
                 pass
 
@@ -154,7 +167,7 @@ class Recording(BaseModel):
 
         # Repair cast file
         if self.cast_path:
-            repair_cast_file(self.cast_path)
+            repair_cast_file(Path(self.cast_path))
 
         self.active = False
         logger.info(f"Stopped recording for window {self.window_id}")
@@ -177,7 +190,7 @@ class Recording(BaseModel):
         """Start asciinema process."""
         cmd = [
             "asciinema", "rec", "--stdin", "--quiet", "--overwrite",
-            str(self.cast_path), "--command", f"cat {self.fifo_path}"
+            str(self.cast_path), "--command", f"tail -f {self.fifo_path}"
         ]
 
         proc = await bg(cmd)
@@ -198,7 +211,7 @@ class Recording(BaseModel):
             # Get pane content
             result = subprocess.run([
                 "tmux", "capture-pane", "-t", f"{self.session_id}:{self.window_id}.{pane_id}",
-                "-p"
+                "-e", "-p"
             ], capture_output=True, text=True)
 
             if result.returncode == 0:

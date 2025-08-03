@@ -44,13 +44,13 @@ def status():
             data = api.get("/").json()
 
             # Get sessions
-            sessions = api.get("/sessions").json()
+            sessions = api.get("/sessions/").json()
 
             # Get windows
-            windows = api.get("/windows").json()
+            windows = api.get("/windows/").json()
 
             # Get all panes
-            panes = api.get("/panes").json()
+            panes = api.get("/panes/").json()
 
             click.echo(f"\nSessions: {len(sessions)}")
             click.echo(f"Windows: {len(windows)}")
