@@ -176,7 +176,7 @@ class Recording(BaseModel):
         """Start asciinema process."""
         cmd = [
             "asciinema", "rec", "--stdin", "--quiet", "--overwrite",
-            str(self.cast_path), "--command", f"tail -f {self.fifo_path}"
+            str(self.cast_path), "--command", f"stdbuf -o0 tail -f {self.fifo_path}"
         ]
 
         proc = await run_bg(cmd)
@@ -192,17 +192,46 @@ class Recording(BaseModel):
         return False
 
     def _dump_pane(self, pane_id: str):
-        """Dump current pane content and cursor position."""
+        """Dump current pane content and restore cursor position."""
         try:
+            pane_target = f"{self.session_id}:{self.window_id}.{pane_id}"
+
+            # Get cursor position and visibility
+            cursor_result = subprocess.run([
+                "tmux", "display-message", "-t", pane_target,
+                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag}"
+            ], capture_output=True, text=True)
+
             # Get pane content
-            result = subprocess.run([
-                "tmux", "capture-pane", "-t", f"{self.session_id}:{self.window_id}.{pane_id}",
+            content_result = subprocess.run([
+                "tmux", "capture-pane", "-t", pane_target,
                 "-e", "-p"
             ], capture_output=True, text=True)
 
-            if result.returncode == 0:
+            if content_result.returncode == 0:
                 with open(self.fifo_path, "w") as f:
-                    f.write(result.stdout)
+                    # Write content without trailing newline
+                    content = content_result.stdout.rstrip('\n')
+                    f.write(content)
+
+                    # Restore cursor position and visibility if we got it
+                    if cursor_result.returncode == 0:
+                        try:
+                            cursor_x, cursor_y, cursor_flag = cursor_result.stdout.strip().split(',')
+                            # Convert to 1-based coordinates for ANSI escape
+                            row = int(cursor_y) + 1
+                            col = int(cursor_x) + 1
+                            f.write(f"\033[{row};{col}H")
+
+                            # Restore cursor visibility (1=visible, 0=hidden)
+                            if int(cursor_flag) == 1:
+                                f.write("\033[?25h")  # Show cursor
+                            else:
+                                f.write("\033[?25l")  # Hide cursor
+
+                        except (ValueError, IndexError):
+                            logger.warning(f"Failed to parse cursor info: {cursor_result.stdout}")
+
                     f.flush()
         except Exception as e:
             logger.warning(f"Failed to dump pane {pane_id}: {e}")
@@ -212,7 +241,7 @@ class Recording(BaseModel):
         try:
             subprocess.run([
                 "tmux", "pipe-pane", "-t", f"{self.session_id}:{self.window_id}.{pane_id}",
-                f"cat >> {self.fifo_path}"
+                f"stdbuf -o0 cat >> {self.fifo_path}"
             ], check=True)
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to start streaming for pane {pane_id}: {e}")

@@ -123,6 +123,7 @@ async def delete_recording(recording_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Recording not found")
 
     recording = recorders[recording_id]
+    cast_path = recording.cast_path  # Get path before stopping
     recording.stop()
 
     # Remove from active recorders
@@ -134,7 +135,7 @@ async def delete_recording(recording_id: str) -> dict:
         # Schedule shutdown after a brief delay to allow response to be sent
         asyncio.create_task(_shutdown_server_delayed())
 
-    return {"status": "stopped", "recording_id": recording_id}
+    return {"status": "stopped", "recording_id": recording_id, "cast_path": cast_path}
 
 
 async def _shutdown_server_delayed():

@@ -138,7 +138,10 @@ def stop(recording_id):
             response = api.delete(f"/recordings/{recording_id}", timeout=10.0)
 
             if response.status_code == 200:
+                data = response.json()
                 click.echo(f"Stopped recording '{recording_id}'")
+                if 'cast_path' in data and data['cast_path']:
+                    click.echo(f"Recording saved to: {data['cast_path']}")
             elif response.status_code == 404:
                 click.echo(f"Recording '{recording_id}' not found", err=True)
                 raise click.Abort()
@@ -167,7 +170,10 @@ def stop(recording_id):
                 response = api.delete(f"/recordings/{rec_id}", timeout=10.0)
                 if response.status_code == 200:
                     stopped_count += 1
+                    data = response.json()
                     click.echo(f"Stopped recording '{rec_id}'")
+                    if 'cast_path' in data and data['cast_path']:
+                        click.echo(f"Recording saved to: {data['cast_path']}")
                 else:
                     click.echo(f"Failed to stop recording '{rec_id}': {response.text}", err=True)
 

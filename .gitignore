@@ -6,4 +6,4 @@ dist
 coverage.json
 .cache
 CLAUDE.local.md
-docs/pydoc.md
+docs/pydoc
