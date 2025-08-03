@@ -20,7 +20,7 @@ $ uvx tvmux --help
 * [🏠 home](https://bitplane.net/dev/python/tvmux)
 * [📚 pydoc](https://bitplane.net/dev/python/tvmux/pydoc)
 * [🐱 github](https://github.com/bitplane/tvmux)
-* [🐍 pypi](https://pypi.org/projects/tvmux)
+* [🐍 pypi](https://pypi.org/project/tvmux)
 
 ### 🌍 See also
 
