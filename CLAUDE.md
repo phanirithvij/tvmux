@@ -11,7 +11,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Testing:**
 - `make test` - Run all tests using pytest
-- `make coverage` - Generate HTML coverage report
 
 **Code quality:**
 - Pre-commit hooks automatically run ruff for linting and formatting

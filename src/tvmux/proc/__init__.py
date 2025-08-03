@@ -1,7 +1,10 @@
 """Process utilities."""
+import asyncio
 import logging
 import subprocess
 from typing import List
+
+from .bg import spawn
 
 logger = logging.getLogger(__name__)
 
@@ -40,3 +43,16 @@ def run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
     except Exception as e:
         logger.error(f"Command failed with exception: {' '.join(cmd)} - {e}")
         raise
+
+
+async def bg(cmd: List[str], **kwargs) -> subprocess.Popen:
+    """Run a subprocess in the background asynchronously.
+
+    Args:
+        cmd: Command to run as list of strings
+        **kwargs: Additional arguments passed to subprocess.Popen
+
+    Returns:
+        The Popen process object
+    """
+    return await asyncio.get_event_loop().run_in_executor(None, lambda: spawn(cmd, **kwargs))
