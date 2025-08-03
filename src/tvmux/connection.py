@@ -7,8 +7,9 @@ from typing import Optional
 
 import httpx
 
-from .server.state import SERVER_HOST, SERVER_PORT
+from .server.state import SERVER_HOST
 from .utils import safe_filename
+from .config import get_config
 
 
 class Connection:
@@ -19,8 +20,11 @@ class Connection:
         self.server_dir = Path(f"/tmp/tvmux-{safe_filename(self.user)}")
         self.pid_file = self.server_dir / "server.pid"
         self.server_host = SERVER_HOST
-        self.server_port = SERVER_PORT
-        self.base_url = f"http://{SERVER_HOST}:{SERVER_PORT}"
+
+        # Use configured port
+        config = get_config()
+        self.server_port = config.server.port
+        self.base_url = f"http://{SERVER_HOST}:{self.server_port}"
 
     @property
     def server_pid(self) -> Optional[int]:

@@ -7,6 +7,7 @@ import click
 from ..connection import Connection
 from ..api_client import APIError
 from ..server.routers.recording import RecordingCreate
+from ..config import get_config
 
 
 @click.group(invoke_without_command=True)
@@ -22,12 +23,18 @@ def rec(ctx):
 def start():
     """Start recording the current tmux window."""
     conn = Connection()
+    config = get_config()
+
     if not conn.is_running:
-        click.echo("Server not running, starting automatically...")
-        if not conn.start():
-            click.echo("Failed to start server", err=True)
-            raise click.Abort()
-        click.echo(f"Server started at {conn.base_url}")
+        if config.server.auto_start:
+            click.echo("Server not running, starting automatically...")
+            if not conn.start():
+                click.echo("Failed to start server", err=True)
+                raise SystemExit(1)
+            click.echo(f"Server started at {conn.base_url}")
+        else:
+            click.echo("Server not running", err=True)
+            raise SystemExit(1)
 
     # Check if we're in tmux
     if not os.environ.get("TMUX"):

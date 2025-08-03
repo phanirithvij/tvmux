@@ -14,6 +14,7 @@ from ..utils import get_session_dir, safe_filename, file_has_readers
 from ..repair import repair_cast_file
 from ..proc import run_bg
 from ..proc import bg
+from ..config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,8 @@ class Recording(BaseModel):
         os.mkfifo(self.fifo_path)
 
         # Create output directory with date
-        date_dir = output_dir / datetime.now().strftime("%Y-%m")
+        config = get_config()
+        date_dir = output_dir / datetime.now().strftime(config.output.date_format)
         date_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate cast filename
@@ -151,8 +153,9 @@ class Recording(BaseModel):
         if self.fifo_path and self.fifo_path.exists():
             self.fifo_path.unlink()
 
-        # Repair cast file
-        if self.cast_path:
+        # Repair cast file if configured
+        config = get_config()
+        if self.cast_path and config.recording.repair_on_stop:
             repair_cast_file(Path(self.cast_path))
 
         self.active = False
@@ -214,8 +217,9 @@ class Recording(BaseModel):
                     content = content_result.stdout.rstrip('\n')
                     f.write(content)
 
-                    # Restore cursor position and visibility if we got it
-                    if cursor_result.returncode == 0:
+                    # Restore cursor position and visibility if configured and available
+                    config = get_config()
+                    if config.annotations.include_cursor_state and cursor_result.returncode == 0:
                         try:
                             cursor_x, cursor_y, cursor_flag = cursor_result.stdout.strip().split(',')
                             # Convert to 1-based coordinates for ANSI escape

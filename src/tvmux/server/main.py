@@ -8,8 +8,9 @@ from fastapi import FastAPI
 
 import uvicorn
 
-from .state import server_dir, recorders, SERVER_HOST, SERVER_PORT
+from .state import server_dir, recorders, SERVER_HOST
 from .routers import session, window, panes, callback, recording
+from ..config import get_config
 
 
 def setup_logging():
@@ -125,8 +126,12 @@ def run_server():
     signal.signal(signal.SIGINT, cleanup_and_exit)
     signal.signal(signal.SIGTERM, cleanup_and_exit)
 
+    # Use configured port
+    config = get_config()
+    server_port = config.server.port
+
     try:
-        uvicorn.run(app, host=SERVER_HOST, port=SERVER_PORT)
+        uvicorn.run(app, host=SERVER_HOST, port=server_port)
     except KeyboardInterrupt:
         pass  # cleanup_and_exit will be called by signal handler
     finally:

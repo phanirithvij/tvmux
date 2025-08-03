@@ -11,6 +11,7 @@ from typing import Optional
 
 from ...models import Recording
 from ..state import recorders
+from ...config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,9 @@ async def create_recording(request: RecordingCreate, response: Response) -> Reco
     if request.output_dir:
         output_dir = Path(request.output_dir).expanduser()
     else:
-        # Default to ~/Videos/tmux
-        output_dir = Path.home() / "Videos" / "tmux"
+        # Use configured output directory
+        config = get_config()
+        output_dir = Path(config.output.directory).expanduser()
 
     logger.info(f"Creating recording for {recording_id}, output_dir={output_dir}")
 
@@ -129,8 +131,9 @@ async def delete_recording(recording_id: str) -> dict:
     # Remove from active recorders
     del recorders[recording_id]
 
-    # Auto-shutdown server if no more recordings
-    if not recorders:
+    # Auto-shutdown server if no more recordings and configured to do so
+    config = get_config()
+    if not recorders and config.server.auto_shutdown:
         logger.info("No more recordings active, scheduling server shutdown...")
         # Schedule shutdown after a brief delay to allow response to be sent
         asyncio.create_task(_shutdown_server_delayed())

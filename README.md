@@ -30,3 +30,15 @@ $ uvx tvmux --help
 | [🪟 textual](https://textualize.io/)                | TUI library for Python             |
 | [🗔  bittty](https://bitplane.net/dev/python/bittty) | My terminal                        |
 | [🎬 sh2mp4](https://bitplane.net/dev/sh/sh2mp4)     | Convert this to MP4 files          |
+
+## TODO
+
+### Bugs?
+
+* What happens when a window closes and I'm recording? Needs to shut down gracefully
+* Same with server itself.
+
+### Prep for next steps
+
+* Need asciinema scrubber using bittty
+* Start a basic TUI in Textual

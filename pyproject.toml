@@ -1,7 +1,7 @@
 [project]
 name = "tvmux"
 description = "terminal multiplexer recorder"
-version = "0.4.1"
+version = "0.4.2"
 authors = [
     { name = "Gareth Davidson", email = "gaz@bitplane.net" }
 ]
@@ -16,7 +16,8 @@ dependencies = [
     "httpx~=0.25",
     "psutil~=5.9",
     "asciinema~=2.4",
-    "requests>=2.0"
+    "requests>=2.0",
+    "tomli>=1.2.0; python_version<'3.11'"
 ]
 
 [project.optional-dependencies]
