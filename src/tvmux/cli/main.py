@@ -4,7 +4,7 @@ import os
 import click
 
 from .server import server
-from .record import record
+from .record import rec
 
 
 @click.group()
@@ -17,7 +17,7 @@ def cli(log_level):
 
 
 cli.add_command(server)
-cli.add_command(record)
+cli.add_command(rec)
 
 
 if __name__ == "__main__":

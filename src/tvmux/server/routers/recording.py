@@ -5,7 +5,7 @@ import os
 import signal
 import subprocess
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -73,7 +73,7 @@ class RecordingCreate(BaseModel):
 
 
 @router.post("/", response_model=Recording)
-async def create_recording(request: RecordingCreate) -> Recording:
+async def create_recording(request: RecordingCreate, response: Response) -> Recording:
     """Start a new recording."""
     logger.info(f"Recording request: session={request.session_id}, window={request.window_id}, pane={request.active_pane}")
 
@@ -85,6 +85,7 @@ async def create_recording(request: RecordingCreate) -> Recording:
         recording = recorders[recording_id]
         if recording.active:
             logger.info(f"Recording already active for {recording_id}")
+            response.status_code = 202  # Accepted - already exists
             return recording
 
     # Determine output directory
@@ -108,6 +109,7 @@ async def create_recording(request: RecordingCreate) -> Recording:
         await recording.start(request.active_pane, output_dir)
         recorders[recording_id] = recording
         logger.info(f"Recording started successfully for {recording_id}")
+        response.status_code = 201  # Created - new recording
         return recording
     except Exception as e:
         logger.error(f"Failed to start recording for {recording_id}: {e}")
