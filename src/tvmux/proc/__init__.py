@@ -45,7 +45,7 @@ def run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
         raise
 
 
-async def bg(cmd: List[str], **kwargs) -> subprocess.Popen:
+async def run_bg(cmd: List[str], **kwargs) -> subprocess.Popen:
     """Run a subprocess in the background asynchronously.
 
     Args:

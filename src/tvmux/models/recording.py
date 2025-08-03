@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..utils import get_session_dir, safe_filename, file_has_readers
 from ..repair import repair_cast_file
-from ..proc import bg
+from ..proc import run_bg
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ class Recording(BaseModel):
             str(self.cast_path), "--command", f"tail -f {self.fifo_path}"
         ]
 
-        proc = await bg(cmd)
+        proc = await run_bg(cmd)
         self.asciinema_pid = proc.pid
         logger.info(f"Started asciinema process: {self.asciinema_pid}")
 
