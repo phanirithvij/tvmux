@@ -6,6 +6,7 @@ import click
 from .server import server
 from .record import rec
 from ..config import load_config, set_config
+from .. import __version__
 
 
 @click.group()
@@ -13,7 +14,7 @@ from ..config import load_config, set_config
               help='Set logging level')
 @click.option('--config-file', type=click.Path(exists=True),
               help='Path to configuration file')
-@click.version_option()
+@click.version_option(version=__version__)
 def cli(log_level, config_file):
     """Per-window recorder for tmux."""
     os.environ['TVMUX_LOG_LEVEL'] = log_level
