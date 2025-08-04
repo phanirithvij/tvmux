@@ -3,7 +3,6 @@ import asyncio
 import logging
 import os
 import subprocess
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -138,7 +137,7 @@ class Recording(BaseModel):
         # Close the FIFO by writing EOF to it - this will cause tail -f to exit
         try:
             # Write EOF to the FIFO to signal end of data
-            with open(self.fifo_path, 'w') as f:
+            with open(self.fifo_path, 'w'):
                 pass  # Just opening and closing sends EOF
         except (OSError, IOError):
             pass
@@ -195,48 +194,82 @@ class Recording(BaseModel):
         return False
 
     def _dump_pane(self, pane_id: str):
-        """Dump current pane content and restore cursor position."""
+        """Dump current pane content with proper terminal state handling."""
         try:
             pane_target = f"{self.session_id}:{self.window_id}.{pane_id}"
 
-            # Get cursor position and visibility
-            cursor_result = subprocess.run([
+            # Get terminal state info including alternate screen status
+            state_result = subprocess.run([
                 "tmux", "display-message", "-t", pane_target,
-                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag}"
+                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag},#{alternate_on},#{alternate_saved_x},#{alternate_saved_y}"
             ], capture_output=True, text=True)
 
-            # Get pane content
-            content_result = subprocess.run([
-                "tmux", "capture-pane", "-t", pane_target,
-                "-e", "-p"
-            ], capture_output=True, text=True)
+            if state_result.returncode != 0:
+                logger.warning(f"Failed to get pane state for {pane_id}")
+                return
 
-            if content_result.returncode == 0:
-                with open(self.fifo_path, "w") as f:
-                    # Write content without trailing newline
-                    content = content_result.stdout.rstrip('\n')
-                    f.write(content)
+            try:
+                state_parts = state_result.stdout.strip().split(',')
+                cursor_x, cursor_y, cursor_flag = int(state_parts[0]), int(state_parts[1]), int(state_parts[2])
+                alternate_on = int(state_parts[3]) == 1
+                alt_saved_x, alt_saved_y = int(state_parts[4]), int(state_parts[5])
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to parse pane state: {state_result.stdout} - {e}")
+                return
 
-                    # Restore cursor position and visibility if configured and available
-                    config = get_config()
-                    if config.annotations.include_cursor_state and cursor_result.returncode == 0:
-                        try:
-                            cursor_x, cursor_y, cursor_flag = cursor_result.stdout.strip().split(',')
-                            # Convert to 1-based coordinates for ANSI escape
-                            row = int(cursor_y) + 1
-                            col = int(cursor_x) + 1
-                            f.write(f"\033[{row};{col}H")
+            with open(self.fifo_path, "w") as f:
+                # 3. Set terminal flags (raw mode, mouse, scroll regions, etc.)
+                f.write("\033[?1000h")   # Enable mouse reporting
+                f.write("\033[?1002h")   # Enable button event mouse reporting
+                f.write("\033[?1006h")   # Enable SGR extended mouse reporting
+                f.write("\033[?7h")      # Enable auto-wrap mode
+                f.write("\033[?25h")     # Show cursor (will be overridden later if needed)
 
-                            # Restore cursor visibility (1=visible, 0=hidden)
-                            if int(cursor_flag) == 1:
-                                f.write("\033[?25h")  # Show cursor
-                            else:
-                                f.write("\033[?25l")  # Hide cursor
+                # Get primary buffer content
+                primary_result = subprocess.run([
+                    "tmux", "capture-pane", "-t", pane_target, "-e", "-p"
+                ], capture_output=True, text=True)
 
-                        except (ValueError, IndexError):
-                            logger.warning(f"Failed to parse cursor info: {cursor_result.stdout}")
+                if primary_result.returncode == 0:
+                    primary_content = primary_result.stdout.rstrip('\n')
+                    f.write(primary_content)
 
-                    f.flush()
+                # 4. If in alternate screen mode, switch to it
+                if alternate_on:
+                    f.write("\033[?1049h")  # Enable alternate screen buffer
+
+                    # 5. If alt mode is on, dump the contents of the alt buffer
+                    alt_result = subprocess.run([
+                        "tmux", "capture-pane", "-t", pane_target, "-a", "-e", "-p"
+                    ], capture_output=True, text=True)
+
+                    if alt_result.returncode == 0:
+                        f.write("\033[2J\033[H")  # Clear alt screen first
+                        alt_content = alt_result.stdout.rstrip('\n')
+                        f.write(alt_content)
+
+                        # Use alternate screen cursor position
+                        cursor_x, cursor_y = alt_saved_x, alt_saved_y
+
+                # 6. Set up scroll region, cursor visibility, raw mode, etc.
+                # TODO: Get actual scroll region from tmux if available
+                # For now, just handle cursor visibility
+
+                # 7. Reposition the text cursor
+                config = get_config()
+                if config.annotations.include_cursor_state:
+                    row = cursor_y + 1  # Convert to 1-based
+                    col = cursor_x + 1
+                    f.write(f"\033[{row};{col}H")
+
+                    # Set final cursor visibility
+                    if cursor_flag == 1:
+                        f.write("\033[?25h")  # Show cursor
+                    else:
+                        f.write("\033[?25l")  # Hide cursor
+
+                f.flush()
+
         except Exception as e:
             logger.warning(f"Failed to dump pane {pane_id}: {e}")
 
@@ -263,9 +296,12 @@ class Recording(BaseModel):
             logger.warning(f"Failed to stop streaming: {e}")
 
     def _write_reset_sequence(self):
-        """Write terminal reset sequence to FIFO."""
+        """Write terminal reset sequence to return to known state."""
         try:
             with open(self.fifo_path, "w") as f:
+                # 1. Disable alt mode (return to main buffer)
+                f.write("\033[?1049l")  # Disable alternate screen buffer
+                # 2. Clear the screen
                 f.write("\033[2J\033[H")  # Clear screen and move cursor to home
                 f.flush()
         except Exception as e:
