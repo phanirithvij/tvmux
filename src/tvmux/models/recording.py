@@ -121,6 +121,23 @@ class Recording(BaseModel):
 
         self.active_pane = new_pane_id
 
+        # Send SIGWINCH to the new pane's process group to trigger resize handling
+        self._send_sigwinch(new_pane_id)
+
+    def _send_sigwinch(self, pane_id: str):
+        """Send SIGWINCH signal to asciinema process to handle terminal resize in recording."""
+        if not self.asciinema_pid:
+            logger.warning("No asciinema process to send SIGWINCH to")
+            return
+
+        try:
+            subprocess.run([
+                "kill", "-SIGWINCH", str(self.asciinema_pid)
+            ], check=True)
+            logger.debug(f"Sent SIGWINCH to asciinema process {self.asciinema_pid} for pane {pane_id}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to send SIGWINCH to asciinema process {self.asciinema_pid}: {e}")
+
     def stop(self):
         """Stop recording."""
         if not self.active:
@@ -225,7 +242,7 @@ class Recording(BaseModel):
                 f.write("\033[?7h")      # Enable auto-wrap mode
                 f.write("\033[?25h")     # Show cursor (will be overridden later if needed)
 
-                # Get primary buffer content
+                # 4. Get and send primary buffer content
                 primary_result = subprocess.run([
                     "tmux", "capture-pane", "-t", pane_target, "-e", "-p"
                 ], capture_output=True, text=True)
@@ -234,11 +251,11 @@ class Recording(BaseModel):
                     primary_content = primary_result.stdout.rstrip('\n')
                     f.write(primary_content)
 
-                # 4. If in alternate screen mode, switch to it
+                # 5. If in alternate screen mode, switch to it
                 if alternate_on:
                     f.write("\033[?1049h")  # Enable alternate screen buffer
 
-                    # 5. If alt mode is on, dump the contents of the alt buffer
+                    # 6. If alt mode is on, dump the contents of the alt buffer
                     alt_result = subprocess.run([
                         "tmux", "capture-pane", "-t", pane_target, "-a", "-e", "-p"
                     ], capture_output=True, text=True)
@@ -251,11 +268,11 @@ class Recording(BaseModel):
                         # Use alternate screen cursor position
                         cursor_x, cursor_y = alt_saved_x, alt_saved_y
 
-                # 6. Set up scroll region, cursor visibility, raw mode, etc.
+                # 7. Set up scroll region, cursor visibility, raw mode, etc.
                 # TODO: Get actual scroll region from tmux if available
                 # For now, just handle cursor visibility
 
-                # 7. Reposition the text cursor
+                # 8. Reposition the text cursor
                 config = get_config()
                 if config.annotations.include_cursor_state:
                     row = cursor_y + 1  # Convert to 1-based
