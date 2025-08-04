@@ -33,12 +33,7 @@ $ uvx tvmux --help
 
 ## TODO
 
-### Bugs?
-
-* What happens when a window closes and I'm recording? Needs to shut down gracefully
-* Same with server itself.
-
 ### Prep for next steps
 
-* Need asciinema scrubber using bittty
-* Start a basic TUI in Textual
+- [ ] Need asciinema scrubber using bittty ([wip](https://github.com/ttygroup/textual-asciinema))
+- [ ] Start a basic TUI in Textual
