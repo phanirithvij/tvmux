@@ -79,7 +79,7 @@ class Recording(BaseModel):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
         display_name = self._get_display_name()
         safe_window_name = safe_filename(display_name)
-        cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.session_id)}_{safe_window_name}.cast"
+        cast_filename = f"{timestamp}_{safe_filename(self.hostname)}_{safe_filename(self.window_id)}_{safe_window_name}.cast"
         cast_path = date_dir / cast_filename
         self.cast_path = str(cast_path)
 
@@ -215,10 +215,10 @@ class Recording(BaseModel):
         try:
             pane_target = f"{self.session_id}:{self.window_id}.{pane_id}"
 
-            # Get terminal state info including alternate screen status
+            # Get terminal state info including alternate screen status and window title
             state_result = subprocess.run([
                 "tmux", "display-message", "-t", pane_target,
-                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag},#{alternate_on},#{alternate_saved_x},#{alternate_saved_y}"
+                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag},#{alternate_on},#{alternate_saved_x},#{alternate_saved_y},#{pane_title}"
             ], capture_output=True, text=True)
 
             if state_result.returncode != 0:
@@ -230,6 +230,7 @@ class Recording(BaseModel):
                 cursor_x, cursor_y, cursor_flag = int(state_parts[0]), int(state_parts[1]), int(state_parts[2])
                 alternate_on = int(state_parts[3]) == 1
                 alt_saved_x, alt_saved_y = int(state_parts[4]), int(state_parts[5])
+                pane_title = state_parts[6] if len(state_parts) > 6 else ""
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to parse pane state: {state_result.stdout} - {e}")
                 return
@@ -268,11 +269,15 @@ class Recording(BaseModel):
                         # Use alternate screen cursor position
                         cursor_x, cursor_y = alt_saved_x, alt_saved_y
 
-                # 7. Set up scroll region, cursor visibility, raw mode, etc.
+                # 7. Set window title (after content to avoid being overwritten)
+                if pane_title:
+                    f.write(f"\033]0;{pane_title}\007")  # Set window title
+
+                # 8. Set up scroll region, cursor visibility, raw mode, etc.
                 # TODO: Get actual scroll region from tmux if available
                 # For now, just handle cursor visibility
 
-                # 8. Reposition the text cursor
+                # 9. Reposition the text cursor
                 config = get_config()
                 if config.annotations.include_cursor_state:
                     row = cursor_y + 1  # Convert to 1-based

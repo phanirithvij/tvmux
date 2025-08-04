@@ -1,6 +1,5 @@
 """Callback endpoints for tmux hooks."""
 import logging
-import shlex
 import subprocess
 import uuid
 from datetime import datetime
@@ -11,8 +10,6 @@ from typing import Optional, Dict, Any, List
 from ..state import recorders, SERVER_HOST
 from ... import proc
 from ...config import get_config
-
-import sys
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +125,16 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         return "pane_created"
     elif hook_name == "after-kill-pane":
         return "pane_closed"
+    elif hook_name == "after-kill-window":
+        # Window was killed - stop any recording for this window
+        if event.session_name and event.window_id:
+            recorder_key = f"{event.session_name}:{event.window_id}"
+            if recorder_key in recorders:
+                logger.info(f"Window {event.window_id} killed, stopping recording {recorder_key}")
+                recorder = recorders[recorder_key]
+                recorder.stop()
+                del recorders[recorder_key]
+        return "window_killed"
     elif hook_name == "window-unlinked":
         # Window was destroyed - stop any recording for this window
         if event.session_name and event.window_id:
@@ -195,11 +202,12 @@ def setup_tmux_hooks():
         "after-new-window",
         "after-split-window",
         "after-kill-pane",
+        "after-kill-window",     # When window is killed
         "after-resize-pane",
         "after-rename-window",
         "after-rename-session",
         "after-select-pane",     # When active pane changes
-        "window-unlinked",       # When window is destroyed
+        "window-unlinked",       # When window is unlinked (keep for edge cases)
         "session-closed",        # When session ends
     ]
 
@@ -234,6 +242,7 @@ def remove_tmux_hooks():
         "after-new-window",
         "after-split-window",
         "after-kill-pane",
+        "after-kill-window",
         "after-resize-pane",
         "after-rename-window",
         "after-rename-session",
