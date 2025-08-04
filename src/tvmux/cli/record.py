@@ -5,7 +5,6 @@ import subprocess
 import click
 
 from ..connection import Connection
-from ..api_client import APIError
 from ..server.routers.recording import RecordingCreate
 from ..config import get_config
 
@@ -88,7 +87,8 @@ def start():
 
 
 @rec.command("ls")
-def ls():
+@click.option("-q", "--quiet", is_flag=True, help="Only output recording IDs (one per line)")
+def ls(quiet):
     """List active recordings."""
     conn = Connection()
     if not conn.is_running:
@@ -103,21 +103,28 @@ def ls():
         if response.status_code == 200:
             recordings = response.json()
             if recordings:
-                click.echo("Active recordings:")
-                for rec in recordings:
-                    rec_id = rec['id']
-                    session = rec['session_id']
-                    window = rec['window_id']
-                    active_pane = rec.get('active_pane', 'unknown')
+                if quiet:
+                    # Quiet mode: output only recording IDs, one per line
+                    for rec in recordings:
+                        click.echo(rec['id'])
+                else:
+                    # Verbose mode: full details
+                    click.echo("Active recordings:")
+                    for rec in recordings:
+                        rec_id = rec['id']
+                        session = rec['session_id']
+                        window = rec['window_id']
+                        active_pane = rec.get('active_pane', 'unknown')
 
-                    click.echo(f"  ID: {rec_id}")
-                    click.echo(f"      Session: {session}, Window: {window}, Pane: {active_pane}")
+                        click.echo(f"  ID: {rec_id}")
+                        click.echo(f"      Session: {session}, Window: {window}, Pane: {active_pane}")
 
-                    if rec.get('cast_path'):
-                        click.echo(f"      Recording to: {rec['cast_path']}")
-                    click.echo()  # Blank line between recordings
+                        if rec.get('cast_path'):
+                            click.echo(f"      Recording to: {rec['cast_path']}")
+                        click.echo()  # Blank line between recordings
             else:
-                click.echo("No active recordings")
+                if not quiet:
+                    click.echo("No active recordings")
         else:
             click.echo(f"Failed to list recordings: {response.text}", err=True)
             raise click.Abort()
@@ -128,9 +135,9 @@ def ls():
 
 
 @rec.command("stop")
-@click.argument("recording_id", required=False)
-def stop(recording_id):
-    """Stop recording(s). Stop all recordings if no ID specified."""
+@click.argument("recording_ids", nargs=-1)
+def stop(recording_ids):
+    """Stop recording(s). Stop all recordings if no IDs specified."""
     conn = Connection()
     if not conn.is_running:
         click.echo("Server not running", err=True)
@@ -140,21 +147,34 @@ def stop(recording_id):
     try:
         api = conn.client()
 
-        if recording_id:
-            # Stop specific recording
-            response = api.delete(f"/recordings/{recording_id}", timeout=10.0)
+        if recording_ids:
+            # Stop specific recording(s)
+            stopped_count = 0
+            failed_count = 0
 
-            if response.status_code == 200:
-                data = response.json()
-                click.echo(f"Stopped recording '{recording_id}'")
-                if 'cast_path' in data and data['cast_path']:
-                    click.echo(f"Recording saved to: {data['cast_path']}")
-            elif response.status_code == 404:
-                click.echo(f"Recording '{recording_id}' not found", err=True)
-                raise click.Abort()
-            else:
-                click.echo(f"Failed to stop recording: {response.text}", err=True)
-                raise click.Abort()
+            for recording_id in recording_ids:
+                response = api.delete(f"/recordings/{recording_id}", timeout=10.0)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    click.echo(f"Stopped recording '{recording_id}'")
+                    if 'cast_path' in data and data['cast_path']:
+                        click.echo(f"Recording saved to: {data['cast_path']}")
+                    stopped_count += 1
+                elif response.status_code == 404:
+                    click.echo(f"Recording '{recording_id}' not found", err=True)
+                    failed_count += 1
+                else:
+                    click.echo(f"Failed to stop recording '{recording_id}': {response.text}", err=True)
+                    failed_count += 1
+
+            # Summary message for multiple IDs
+            if len(recording_ids) > 1:
+                if stopped_count > 0:
+                    click.echo(f"Successfully stopped {stopped_count} recording(s)")
+                if failed_count > 0:
+                    click.echo(f"Failed to stop {failed_count} recording(s)", err=True)
+                    raise SystemExit(1)
         else:
             # Stop all recordings (default behavior)
             # First get list of active recordings
