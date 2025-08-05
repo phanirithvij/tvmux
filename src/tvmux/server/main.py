@@ -11,6 +11,7 @@ import uvicorn
 from .state import server_dir, recorders, SERVER_HOST
 from .routers import session, window, panes, callback, recording
 from ..config import get_config
+from .. import __version__
 
 
 def setup_logging():
@@ -93,8 +94,15 @@ async def root():
     return {
         "status": "running",
         "pid": os.getpid(),
-        "recorders": len(recorders)
+        "recorders": len(recorders),
+        "version": __version__
     }
+
+
+@app.get("/version")
+async def version():
+    """Get server version."""
+    return {"version": __version__}
 
 
 
