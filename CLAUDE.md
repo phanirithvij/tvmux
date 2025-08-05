@@ -23,7 +23,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-tvmux is a terminal session recorder that creates asciinema cast files from tmux sessions. The project is undergoing a rewrite from Bash (master branch) to Python with a client-server architecture.
+tvmux is a terminal session recorder that creates asciinema cast files from tmux sessions. The project is now at version 0.5.3 with a complete Python rewrite featuring robust client-server architecture.
 
 ### Core Components
 
@@ -36,20 +36,28 @@ tvmux is a terminal session recorder that creates asciinema cast files from tmux
 - `main.py` - FastAPI application with lifespan management and tmux hook setup
 - `state.py` - Global state management for recorders and server configuration
 - `routers/` - REST API endpoints:
-  - `/sessions` - Session management
-  - `/windows` - Window management
-  - `/panes` - Pane operations (separate from windows)
-  - `/recordings` - Recording control (RESTful with IDs)
-  - `/callbacks` - tmux hook callbacks
+  - `session.py` - Session management
+  - `window.py` - Window management
+  - `panes.py` - Pane operations (separate from windows)
+  - `recording.py` - Recording control (RESTful with IDs)
+  - `callback.py` - tmux hook callbacks
+
+**Configuration System (`src/tvmux/`):**
+- `config.py` - Complete configuration management with TOML support
+- `api_client.py` - HTTP client for server communication
+- `connection.py` - Connection utilities and health checks
+- `utils.py` - Common utilities and helper functions
 
 **Recording Engine (`src/tvmux/`):**
-- `recorder.py` - Core recording functionality using asciinema and FIFOs
-- `background.py` - Process management for background tasks
 - `repair.py` - Cast file repair utilities for handling abrupt terminations
 
+**Process Management (`src/tvmux/proc/`):**
+- `bg.py` - Background process management and cleanup
+
 **Data Models (`src/tvmux/models/`):**
-- Pydantic models for sessions, windows, panes, and positions
+- Pydantic models for sessions, windows, panes, positions, and recordings
 - Type-safe data structures for the REST API
+- `remote.py` - Remote connection models
 
 ### Key Architecture Decisions
 
@@ -81,11 +89,32 @@ tvmux is a terminal session recorder that creates asciinema cast files from tmux
 
 Recordings are organized by date: `output_dir/YYYY-MM/timestamp_hostname_session_window.cast`
 
+## Configuration
+
+tvmux supports flexible configuration through multiple sources:
+
+**Configuration Files:**
+- `~/.tvmux.conf` - TOML format user configuration
+- `example.tvmux.conf` - Example configuration template
+
+**Environment Variables:**
+- `TVMUX_OUTPUT_DIR` - Override output directory
+- `TVMUX_SERVER_PORT` - Override server port (default: 21590)
+- `TVMUX_CONFIG_FILE` - Custom config file location
+- `TVMUX_AUTO_START` - Enable/disable auto-start server
+
+**Configuration Sections:**
+- `[output]` - Recording output settings (directory, date format)
+- `[server]` - Server settings (port, auto-start, auto-shutdown)
+- `[recording]` - Recording behavior (repair, pane following)
+- `[annotations]` - Annotation options (cursor state)
+
 ## Development Notes
 
-- Python 3.10+ with type hints and Pydantic models
+- Python 3.11+ with type hints and Pydantic models (tested on 3.13.3)
 - Async/await for server operations
-- Uses `scripts/test.sh` (pytest) for testing
+- Uses `make test` (pytest) for testing
 - Ruff for linting and formatting (120 char line length)
 - Pre-commit hooks enforce code quality
 - Background process management prevents orphaned processes
+- Full configuration system with TOML support and environment overrides
