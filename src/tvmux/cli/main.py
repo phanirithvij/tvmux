@@ -5,6 +5,7 @@ import click
 
 from .server import server
 from .record import rec
+from .config import config
 from ..config import load_config, set_config
 from ..connection import Connection
 from .. import __version__
@@ -54,6 +55,7 @@ def cli(log_level, config_file):
 
 cli.add_command(server)
 cli.add_command(rec)
+cli.add_command(config)
 
 
 if __name__ == "__main__":

@@ -2,9 +2,10 @@
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from pydantic import BaseModel, Field
+import tomli_w
 
 # Handle tomllib import for Python 3.10
 if sys.version_info >= (3, 11):
@@ -70,19 +71,8 @@ def load_config(config_file: Optional[str] = None) -> Config:
         with open(config_path, "rb") as f:
             config_data = tomllib.load(f)
 
-    # Apply environment variable overrides
-    env_overrides = {}
-
-    # Output overrides
-    if os.getenv("TVMUX_OUTPUT_DIR"):
-        env_overrides.setdefault("output", {})["directory"] = os.getenv("TVMUX_OUTPUT_DIR")
-
-    # Server overrides
-    if os.getenv("TVMUX_SERVER_PORT"):
-        env_overrides.setdefault("server", {})["port"] = int(os.getenv("TVMUX_SERVER_PORT"))
-
-    if os.getenv("TVMUX_AUTO_START"):
-        env_overrides.setdefault("server", {})["auto_start"] = os.getenv("TVMUX_AUTO_START").lower() in ("true", "1", "yes")
+    # Apply environment variable overrides programmatically
+    env_overrides = load_all_env_overrides()
 
     # Merge environment overrides into config data
     for section, values in env_overrides.items():
@@ -90,6 +80,84 @@ def load_config(config_file: Optional[str] = None) -> Config:
 
     # Create and return config object
     return Config(**config_data)
+
+
+def generate_env_var_name(section: str, field: str) -> str:
+    """Generate environment variable name for a config field.
+
+    Follows convention: TVMUX_{SECTION}_{FIELD}
+    """
+    return f"TVMUX_{section.upper()}_{field.upper()}"
+
+
+def get_all_env_mappings() -> Dict[str, tuple[str, str]]:
+    """Get all possible environment variable mappings.
+
+    Returns dict mapping env var name to (section, field) tuple.
+    """
+    mappings = {}
+
+    # Get the default config to introspect fields
+    default_config = Config()
+
+    for section_name, section_obj in default_config.model_dump().items():
+        if isinstance(section_obj, dict):
+            for field_name in section_obj.keys():
+                env_var = generate_env_var_name(section_name, field_name)
+                mappings[env_var] = (section_name, field_name)
+
+    return mappings
+
+
+def load_all_env_overrides() -> Dict[str, Any]:
+    """Load all environment variable overrides programmatically."""
+    env_overrides = {}
+
+    for env_var, (section, field) in get_all_env_mappings().items():
+        if env_value := os.getenv(env_var):
+            env_overrides.setdefault(section, {})[field] = _convert_env_value(env_value)
+
+    return env_overrides
+
+
+def _convert_env_value(value: str) -> Any:
+    """Convert environment variable string to appropriate type."""
+    # Handle boolean values
+    if value.lower() in ("true", "1", "yes", "on"):
+        return True
+    elif value.lower() in ("false", "0", "no", "off"):
+        return False
+
+    # Try to convert to int
+    try:
+        return int(value)
+    except ValueError:
+        pass
+
+    # Return as string
+    return value
+
+
+def dump_config_toml(config: Config) -> str:
+    """Convert Config to TOML string."""
+    return tomli_w.dumps(config.model_dump())
+
+
+def dump_config_env(config: Config) -> str:
+    """Convert Config to environment variable format."""
+    lines = []
+    config_dict = config.model_dump()
+
+    for section_name, section_data in config_dict.items():
+        if isinstance(section_data, dict):
+            for field_name, value in section_data.items():
+                env_var = generate_env_var_name(section_name, field_name)
+                # Format boolean values appropriately for shell
+                if isinstance(value, bool):
+                    value = "true" if value else "false"
+                lines.append(f"{env_var}={value}")
+
+    return "\n".join(lines)
 
 
 # Global config instance

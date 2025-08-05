@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from tvmux.config import Config, load_config, set_config, get_config
+from tvmux.config import (
+    Config, load_config, set_config, get_config,
+    generate_env_var_name, get_all_env_mappings, load_all_env_overrides,
+    _convert_env_value, dump_config_toml, dump_config_env
+)
 
 
 def test_default_config():
@@ -103,12 +107,12 @@ port = 7777
         f.write(toml_content)
         config_path = f.name
 
-    # Set environment variables
+    # Set environment variables (using new programmatic names)
     old_env = {}
     env_vars = {
-        "TVMUX_OUTPUT_DIR": "/from/env",
+        "TVMUX_OUTPUT_DIRECTORY": "/from/env",
         "TVMUX_SERVER_PORT": "9999",
-        "TVMUX_AUTO_START": "false"
+        "TVMUX_SERVER_AUTO_START": "false"
     }
 
     for key, value in env_vars.items():
@@ -194,25 +198,26 @@ def test_boolean_env_vars():
         ("True", True),
         ("1", True),
         ("yes", True),
+        ("on", True),
         ("false", False),
         ("False", False),
         ("0", False),
         ("no", False),
-        ("anything_else", False)
+        ("off", False)
     ]
 
-    old_env = os.environ.get("TVMUX_AUTO_START")
+    old_env = os.environ.get("TVMUX_SERVER_AUTO_START")
 
     try:
         for env_value, expected in test_cases:
-            os.environ["TVMUX_AUTO_START"] = env_value
+            os.environ["TVMUX_SERVER_AUTO_START"] = env_value
             config = load_config()
             assert config.server.auto_start is expected, f"Failed for {env_value}"
     finally:
         if old_env is None:
-            os.environ.pop("TVMUX_AUTO_START", None)
+            os.environ.pop("TVMUX_SERVER_AUTO_START", None)
         else:
-            os.environ["TVMUX_AUTO_START"] = old_env
+            os.environ["TVMUX_SERVER_AUTO_START"] = old_env
 
 
 def test_path_expansion():
@@ -226,3 +231,197 @@ def test_path_expansion():
     expanded = Path(config.output.directory).expanduser()
     assert str(expanded).startswith(str(Path.home()))
     assert str(expanded).endswith("test/path")
+
+
+def test_generate_env_var_name():
+    """Test environment variable name generation."""
+    assert generate_env_var_name("output", "directory") == "TVMUX_OUTPUT_DIRECTORY"
+    assert generate_env_var_name("server", "port") == "TVMUX_SERVER_PORT"
+    assert generate_env_var_name("recording", "repair_on_stop") == "TVMUX_RECORDING_REPAIR_ON_STOP"
+    assert generate_env_var_name("annotations", "include_cursor_state") == "TVMUX_ANNOTATIONS_INCLUDE_CURSOR_STATE"
+
+
+def test_get_all_env_mappings():
+    """Test that all config fields have environment variable mappings."""
+    mappings = get_all_env_mappings()
+
+    # Should have all expected fields
+    expected_vars = {
+        "TVMUX_OUTPUT_DIRECTORY": ("output", "directory"),
+        "TVMUX_OUTPUT_DATE_FORMAT": ("output", "date_format"),
+        "TVMUX_SERVER_PORT": ("server", "port"),
+        "TVMUX_SERVER_AUTO_START": ("server", "auto_start"),
+        "TVMUX_SERVER_AUTO_SHUTDOWN": ("server", "auto_shutdown"),
+        "TVMUX_RECORDING_REPAIR_ON_STOP": ("recording", "repair_on_stop"),
+        "TVMUX_RECORDING_FOLLOW_ACTIVE_PANE": ("recording", "follow_active_pane"),
+        "TVMUX_ANNOTATIONS_INCLUDE_CURSOR_STATE": ("annotations", "include_cursor_state"),
+    }
+
+    for env_var, (section, field) in expected_vars.items():
+        assert env_var in mappings
+        assert mappings[env_var] == (section, field)
+
+    # Should have exactly the expected number of mappings
+    assert len(mappings) == len(expected_vars)
+
+
+def test_convert_env_value():
+    """Test environment variable value conversion."""
+    # Boolean values
+    assert _convert_env_value("true") is True
+    assert _convert_env_value("True") is True
+    assert _convert_env_value("1") is True
+    assert _convert_env_value("yes") is True
+    assert _convert_env_value("on") is True
+
+    assert _convert_env_value("false") is False
+    assert _convert_env_value("False") is False
+    assert _convert_env_value("0") is False
+    assert _convert_env_value("no") is False
+    assert _convert_env_value("off") is False
+
+    # Integer values
+    assert _convert_env_value("123") == 123
+    assert _convert_env_value("0") == 0  # Note: This tests the int conversion before bool
+    assert _convert_env_value("-456") == -456
+
+    # String values
+    assert _convert_env_value("hello") == "hello"
+    assert _convert_env_value("/some/path") == "/some/path"
+    assert _convert_env_value("%Y-%m") == "%Y-%m"
+
+
+def test_load_all_env_overrides():
+    """Test programmatic environment variable loading."""
+    # Set up some test environment variables
+    test_env_vars = {
+        "TVMUX_OUTPUT_DIRECTORY": "/test/env/path",
+        "TVMUX_SERVER_PORT": "8888",
+        "TVMUX_SERVER_AUTO_START": "false",
+        "TVMUX_RECORDING_REPAIR_ON_STOP": "true",
+        "TVMUX_ANNOTATIONS_INCLUDE_CURSOR_STATE": "false"
+    }
+
+    # Store original values
+    original_values = {}
+    for env_var in test_env_vars:
+        original_values[env_var] = os.environ.get(env_var)
+
+    # Set test values
+    for env_var, value in test_env_vars.items():
+        os.environ[env_var] = value
+
+    try:
+        overrides = load_all_env_overrides()
+
+        # Check structure and values
+        assert "output" in overrides
+        assert "server" in overrides
+        assert "recording" in overrides
+        assert "annotations" in overrides
+
+        assert overrides["output"]["directory"] == "/test/env/path"
+        assert overrides["server"]["port"] == 8888
+        assert overrides["server"]["auto_start"] is False
+        assert overrides["recording"]["repair_on_stop"] is True
+        assert overrides["annotations"]["include_cursor_state"] is False
+
+    finally:
+        # Restore original environment
+        for env_var, original_value in original_values.items():
+            if original_value is None:
+                os.environ.pop(env_var, None)
+            else:
+                os.environ[env_var] = original_value
+
+
+def test_dump_config_toml():
+    """Test TOML configuration output."""
+    config = Config(
+        output={"directory": "/test/path", "date_format": "%Y-%m-%d"},
+        server={"port": 9999, "auto_start": False}
+    )
+
+    toml_output = dump_config_toml(config)
+
+    # Should be valid TOML
+    assert "[output]" in toml_output
+    assert "[server]" in toml_output
+    assert 'directory = "/test/path"' in toml_output
+    assert 'date_format = "%Y-%m-%d"' in toml_output
+    assert "port = 9999" in toml_output
+    assert "auto_start = false" in toml_output
+
+
+def test_dump_config_env():
+    """Test environment variable configuration output."""
+    config = Config(
+        output={"directory": "/test/path", "date_format": "%Y-%m-%d"},
+        server={"port": 9999, "auto_start": False},
+        recording={"repair_on_stop": True}
+    )
+
+    env_output = dump_config_env(config)
+    lines = env_output.split("\n")
+
+    # Should have all expected variables
+    expected_lines = {
+        "TVMUX_OUTPUT_DIRECTORY=/test/path",
+        "TVMUX_OUTPUT_DATE_FORMAT=%Y-%m-%d",
+        "TVMUX_SERVER_PORT=9999",
+        "TVMUX_SERVER_AUTO_START=false",
+        "TVMUX_SERVER_AUTO_SHUTDOWN=true",
+        "TVMUX_RECORDING_REPAIR_ON_STOP=true",
+        "TVMUX_RECORDING_FOLLOW_ACTIVE_PANE=true",
+        "TVMUX_ANNOTATIONS_INCLUDE_CURSOR_STATE=true"
+    }
+
+    for expected_line in expected_lines:
+        assert expected_line in lines
+
+
+def test_comprehensive_env_var_coverage():
+    """Test that new programmatic approach covers all config fields."""
+    # Create config with all non-default values
+    config = Config(
+        output={"directory": "/custom", "date_format": "%Y"},
+        server={"port": 8888, "auto_start": False, "auto_shutdown": False},
+        recording={"repair_on_stop": False, "follow_active_pane": False},
+        annotations={"include_cursor_state": False}
+    )
+
+    # Set all corresponding environment variables
+    env_lines = dump_config_env(config).split("\n")
+
+    # Clear environment first
+    for line in env_lines:
+        if "=" in line:
+            env_var = line.split("=")[0]
+            os.environ.pop(env_var, None)
+
+    # Set all env vars from the config
+    for line in env_lines:
+        if "=" in line:
+            env_var, value = line.split("=", 1)
+            os.environ[env_var] = value
+
+    try:
+        # Load config using environment variables
+        loaded_config = load_config()
+
+        # Should match the original config
+        assert loaded_config.output.directory == "/custom"
+        assert loaded_config.output.date_format == "%Y"
+        assert loaded_config.server.port == 8888
+        assert loaded_config.server.auto_start is False
+        assert loaded_config.server.auto_shutdown is False
+        assert loaded_config.recording.repair_on_stop is False
+        assert loaded_config.recording.follow_active_pane is False
+        assert loaded_config.annotations.include_cursor_state is False
+
+    finally:
+        # Clean up environment
+        for line in env_lines:
+            if "=" in line:
+                env_var = line.split("=")[0]
+                os.environ.pop(env_var, None)
