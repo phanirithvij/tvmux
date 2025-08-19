@@ -41,6 +41,7 @@ To customize, create `~/.tvmux.conf` or use environment variables like `TVMUX_OU
 
 * [🏠 home](https://bitplane.net/dev/python/tvmux)
 * [📚 pydoc](https://bitplane.net/dev/python/tvmux/pydoc)
+* [📚 api](https://bitplane.net/dev/python/tvmux/api)
 * [🐱 github](https://github.com/bitplane/tvmux)
 * [🐍 pypi](https://pypi.org/project/tvmux)
 
