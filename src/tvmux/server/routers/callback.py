@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 
 from ..state import recorders, SERVER_HOST
+from ..window_monitor import cleanup_closed_windows
 from ... import proc
 from ...config import get_config
 
@@ -125,26 +126,10 @@ async def _process_callback_event(event: CallbackEvent) -> str:
         return "pane_created"
     elif hook_name == "after-kill-pane":
         return "pane_closed"
-    elif hook_name == "after-kill-window":
-        # Window was killed - stop any recording for this window
-        if event.session_name and event.window_id:
-            recorder_key = f"{event.session_name}:{event.window_id}"
-            if recorder_key in recorders:
-                logger.info(f"Window {event.window_id} killed, stopping recording {recorder_key}")
-                recorder = recorders[recorder_key]
-                recorder.stop()
-                del recorders[recorder_key]
-        return "window_killed"
     elif hook_name == "window-unlinked":
-        # Window was destroyed - stop any recording for this window
-        if event.session_name and event.window_id:
-            recorder_key = f"{event.session_name}:{event.window_id}"
-            if recorder_key in recorders:
-                logger.info(f"Window {event.window_id} destroyed, stopping recording {recorder_key}")
-                recorder = recorders[recorder_key]
-                recorder.stop()
-                del recorders[recorder_key]
-        return "window_destroyed"
+        # Window was unlinked - but we can't trust the window_id here
+        # The cleanup will happen on the next pane switch via cleanup_closed_windows()
+        return "window_unlinked"
     elif hook_name == "session-closed":
         # Session died - stop all recordings for this session
         if event.session_name:
@@ -158,6 +143,9 @@ async def _process_callback_event(event: CallbackEvent) -> str:
     elif hook_name == "after-select-pane":
         # Active pane changed within a window
         logger.debug(f"Pane select event: session={event.session_name}, window={event.window_id}, pane={event.pane_id}")
+
+        # Clean up any recordings for windows that no longer exist
+        cleanup_closed_windows()
 
         if event.session_name and event.window_id:
             # Use session_name from callback as session_id for recorder key
@@ -202,12 +190,12 @@ def setup_tmux_hooks():
         "after-new-window",
         "after-split-window",
         "after-kill-pane",
-        "after-kill-window",     # When window is killed
+        # Note: after-kill-window doesn't exist in tmux
         "after-resize-pane",
         "after-rename-window",
         "after-rename-session",
         "after-select-pane",     # When active pane changes
-        "window-unlinked",       # When window is unlinked (keep for edge cases)
+        "window-unlinked",       # When window is unlinked from session
         "session-closed",        # When session ends
     ]
 
@@ -242,7 +230,7 @@ def remove_tmux_hooks():
         "after-new-window",
         "after-split-window",
         "after-kill-pane",
-        "after-kill-window",
+        # Note: after-kill-window doesn't exist in tmux
         "after-resize-pane",
         "after-rename-window",
         "after-rename-session",
