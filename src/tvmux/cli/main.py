@@ -2,6 +2,7 @@
 """Main CLI entry point for tvmux."""
 import os
 import logging
+import sys
 from pathlib import Path
 import click
 
@@ -56,11 +57,7 @@ def setup_client_logging(config):
             log_path.parent.mkdir(parents=True, exist_ok=True)
             handlers.append(logging.FileHandler(log_path))
 
-        # For non-TUI commands, we might want console output too (but not for API calls)
-        import sys
-        if 'api' not in sys.argv:
-            handlers.append(logging.StreamHandler())
-
+        # Always use file logging only for CLI - no console spam
         if not handlers:
             handlers.append(logging.NullHandler())
 
