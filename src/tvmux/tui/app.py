@@ -130,7 +130,7 @@ class ChannelTuner(Static):
         if not self.channels:
             return "📺 No channels available\n\nOpen a tmux session to see channels"
 
-        lines = ["📺 Channels (↑↓ to select, Enter to tune, Space to record):\n"]
+        lines = []
 
         for i, channel in enumerate(self.channels[:8]):  # Show 8 channels max
             marker = "▶ " if i == self.selected_index else "  "
@@ -361,7 +361,7 @@ class TVMuxApp(App):
         ("up", "select_previous", "Previous"),
         ("down", "select_next", "Next"),
         ("enter", "play_selected", "Tune"),
-        ("space", "toggle_playback", "Record"),
+        ("ctrl+r", "toggle_playback", "Record"),
     ]
 
     def __init__(self, **kwargs):
