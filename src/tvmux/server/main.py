@@ -9,7 +9,7 @@ from fastapi import FastAPI
 import uvicorn
 
 from .state import server_dir, recorders, SERVER_HOST
-from .routers import session, window, panes, callback, recording
+from .routers import session, window, panes, callbacks, hook, recording
 from ..config import get_config
 from .. import __version__
 
@@ -56,11 +56,11 @@ async def lifespan(app: FastAPI):
     (server_dir / "server.pid").write_text(str(os.getpid()))
 
     # Clean up any existing hooks first (in case of previous crash)
-    callback.remove_tmux_hooks()
+    callbacks.remove_all_hooks()
 
-    # Set up tmux hooks to call our callbacks
-    callback.setup_tmux_hooks()
-    logger.info("tmux hooks configured")
+    # Set up default tmux hooks
+    callbacks.setup_default_hooks()
+    logger.info("Default tmux hooks configured")
 
     # TODO: Discover existing panes and start tracking them
 
@@ -68,7 +68,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     # Remove tmux hooks
-    callback.remove_tmux_hooks()
+    callbacks.remove_all_hooks()
 
     # Remove PID file
     (server_dir / "server.pid").unlink(missing_ok=True)
@@ -84,7 +84,8 @@ app = FastAPI(title="tvmux server", lifespan=lifespan)
 app.include_router(session.router, prefix="/sessions", tags=["sessions"])
 app.include_router(window.router, prefix="/windows", tags=["windows"])
 app.include_router(panes.router, prefix="/panes", tags=["panes"])
-app.include_router(callback.router, prefix="/callbacks", tags=["callbacks"])
+app.include_router(callbacks.router, prefix="/callbacks", tags=["callbacks"])
+app.include_router(hook.router, prefix="/hook", tags=["hook"])
 app.include_router(recording.router, prefix="/recordings", tags=["recordings"])
 
 
@@ -120,7 +121,7 @@ def cleanup_and_exit(signum=None, frame=None):
             print(f"Error stopping recorder: {e}")
 
     # Remove tmux hooks
-    callback.remove_tmux_hooks()
+    callbacks.remove_all_hooks()
 
     # Remove PID file
     (server_dir / "server.pid").unlink(missing_ok=True)

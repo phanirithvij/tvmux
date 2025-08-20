@@ -7,3 +7,4 @@ coverage.json
 .cache
 CLAUDE.local.md
 docs/pydoc
+todo.md
