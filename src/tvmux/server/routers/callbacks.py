@@ -1,6 +1,7 @@
 """CRUD endpoints for managing tmux hooks."""
 import logging
 import subprocess
+import sys
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, List
@@ -60,30 +61,37 @@ AVAILABLE_HOOKS = {
 installed_hooks: Dict[str, Hook] = {}
 
 
+def build_hook_curl_command(hook_name: str, base_url: str) -> str:
+    """Build a tvmux CLI command for tmux hook callbacks.
+
+    This function is extracted for testing and maintainability.
+    Returns a shell command string.
+
+    Note: base_url is kept for compatibility but not used with CLI approach.
+    """
+    # Use tvmux CLI with the Python interpreter from sys.executable
+    # This ensures we use the correct Python even when tmux runs outside the venv
+    python_exe = sys.executable
+
+    # These are tmux format strings, not Python f-string variables!
+    # No quotes needed around tmux format strings - they'll be expanded to values without spaces
+    return (
+        f'{python_exe} -m tvmux.cli.main api hook create '
+        f'--hook-name {hook_name} '
+        '--session-name #{session_name} '
+        '--window-id #{window_id} '
+        '--pane-id #{pane_id} '
+        '--window-index #{window_index} '
+        '--pane-index #{pane_index}'
+    )
+
+
 def get_default_command(hook_name: str) -> str:
     """Get the default command for a hook."""
     config = get_config()
     base_url = f"http://{SERVER_HOST}:{config.server.port}/hook"
 
-    # Build the JSON payload with tmux variables
-    json_template = {
-        "hook_name": hook_name,
-        "session_name": "#{session_name}",
-        "window_id": "#{window_id}",
-        "pane_id": "#{pane_id}",
-        "window_index": "#{window_index}",
-        "pane_index": "#{pane_index}"
-    }
-
-    # Convert to JSON string and escape for shell
-    import json
-    json_str = json.dumps(json_template).replace('"', '\\"')
-
-    return (
-        f'curl -s -X POST {base_url} '
-        f'-H "Content-Type: application/json" '
-        f'-d "{json_str}" >/dev/null 2>&1'
-    )
+    return build_hook_curl_command(hook_name, base_url)
 
 
 def install_hook(hook: Hook) -> None:
@@ -97,6 +105,7 @@ def install_hook(hook: Hook) -> None:
     logger.debug(f"Hook command: {command}")
 
     # Set the hook using tmux
+    # Use single quotes for run-shell to avoid conflicts with double quotes in command
     proc.run(["tmux", "set-hook", "-g", hook.name, f"run-shell '{command}'"])
 
 

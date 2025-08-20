@@ -40,8 +40,8 @@ def run(cmd: List[str], **kwargs) -> subprocess.CompletedProcess:
 
         return result
 
-    except Exception as e:
-        logger.error(f"Command failed with exception: {' '.join(cmd)} - {e}")
+    except Exception:
+        logger.exception(f"Command failed with exception: {' '.join(cmd)}")
         raise
 
 

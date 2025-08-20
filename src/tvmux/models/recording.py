@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from ..utils import get_session_dir, safe_filename, file_has_readers
 from ..repair import repair_cast_file
@@ -37,9 +37,7 @@ class Recording(BaseModel):
     asciinema_pid: Optional[int] = Field(None, exclude=True, alias="_asciinema_pid")
     running: bool = Field(False, exclude=True, alias="_running")
 
-    class Config:
-        # Allow Path objects
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, **data):
         super().__init__(**data)

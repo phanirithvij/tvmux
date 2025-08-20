@@ -1,6 +1,6 @@
 """Base model for objects that sync with a remote backend."""
 from typing import Any, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class RemoteModel(BaseModel):
@@ -69,6 +69,4 @@ class RemoteModel(BaseModel):
         """
         raise NotImplementedError("Subclasses must implement commit()")
 
-    class Config:
-        # Pydantic config
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
