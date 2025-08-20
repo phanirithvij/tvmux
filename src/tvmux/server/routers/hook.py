@@ -25,7 +25,7 @@ class HookEvent(BaseModel):
     extra: Dict[str, Any] = {}
 
 
-@router.post("/")
+@router.post("")
 async def receive_hook(event: HookEvent) -> Dict[str, str]:
     """Receive and process a hook event from tmux."""
     # Log the event using standard Python logging

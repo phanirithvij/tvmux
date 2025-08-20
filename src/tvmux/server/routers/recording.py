@@ -73,7 +73,7 @@ class RecordingCreate(BaseModel):
     output_dir: Optional[str] = None
 
 
-@router.post("/", response_model=Recording)
+@router.post("", response_model=Recording)
 async def create_recording(request: RecordingCreate, response: Response) -> Recording:
     """Start a new recording."""
 
@@ -172,7 +172,7 @@ async def get_recording(recording_id: str) -> Recording:
     return recorders[recording_id]
 
 
-@router.get("/", response_model=list[Recording])
+@router.get("", response_model=list[Recording])
 async def list_recordings() -> list[Recording]:
     """List all active recordings."""
     return list(recorders.values())

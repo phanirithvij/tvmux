@@ -47,7 +47,7 @@ class Connection:
 
         # Try to connect to the server
         try:
-            response = httpx.get(f"{self.base_url}/", timeout=1.0)
+            response = httpx.get(f"{self.base_url}/", timeout=1.0, follow_redirects=True)
             return response.status_code == 200
         except (httpx.RequestError, httpx.TimeoutException):
             return False
@@ -121,7 +121,7 @@ class Connection:
         if not self.is_running:
             raise RuntimeError("Server not running")
 
-        return httpx.Client(base_url=self.base_url)
+        return httpx.Client(base_url=self.base_url, follow_redirects=True)
 
 
     def api(self):

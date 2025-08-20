@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Main CLI entry point for tvmux."""
 import os
+import logging
+from pathlib import Path
 import click
 
 from .server import server
@@ -39,6 +41,46 @@ def print_version(ctx, param, value):
     ctx.exit()
 
 
+def setup_client_logging(config):
+    """Set up client-side logging for all CLI commands."""
+    try:
+        log_level = config.logging.level.upper()
+        client_log_file = config.logging.client_log_file
+
+        # Configure handlers
+        handlers = []
+
+        # Add file handler if configured
+        if client_log_file:
+            log_path = Path(client_log_file).expanduser()
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(log_path))
+
+        # For non-TUI commands, we might want console output too (but not for API calls)
+        import sys
+        if 'api' not in sys.argv:
+            handlers.append(logging.StreamHandler())
+
+        if not handlers:
+            handlers.append(logging.NullHandler())
+
+        # Configure logging
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=handlers,
+            force=True  # Override any existing config
+        )
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Client logging initialized, command: {' '.join(sys.argv)}")
+
+    except Exception as e:
+        # Fallback to basic console logging
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger(__name__).exception("Failed to setup client logging, using defaults")
+
+
 @click.group(invoke_without_command=True)
 @click.option('--log-level', default='INFO', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
               help='Set logging level')
@@ -54,7 +96,10 @@ def cli(ctx, log_level, config_file):
     # Load configuration
     config = load_config(config_file)
     set_config(config)
-    
+
+    # Set up logging for all CLI commands
+    setup_client_logging(config)
+
     # If no command specified, launch TUI
     if ctx.invoked_subcommand is None:
         ctx.invoke(tui)

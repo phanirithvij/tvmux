@@ -74,15 +74,17 @@ def build_hook_curl_command(hook_name: str, base_url: str) -> str:
     python_exe = sys.executable
 
     # These are tmux format strings, not Python f-string variables!
-    # No quotes needed around tmux format strings - they'll be expanded to values without spaces
+    # Arguments need to be JSON literals now - strings need quotes, empty dict for extra
+    # Redirect output to /dev/null to prevent cluttering the terminal
     return (
         f'{python_exe} -m tvmux.cli.main api hook create '
-        f'--hook-name {hook_name} '
-        '--session-name #{session_name} '
-        '--window-id #{window_id} '
-        '--pane-id #{pane_id} '
-        '--window-index #{window_index} '
-        '--pane-index #{pane_index}'
+        f'--hook-name \\"{hook_name}\\" '
+        '--session-name \\"#{session_name}\\" '
+        '--window-id \\"#{window_id}\\" '
+        '--pane-id \\"#{pane_id}\\" '
+        '--window-index \\"#{window_index}\\" '
+        '--pane-index \\"#{pane_index}\\" '
+        '--extra \\{\\} >/dev/null 2>&1'
     )
 
 
@@ -115,7 +117,7 @@ def uninstall_hook(hook_name: str) -> None:
     subprocess.run(["tmux", "set-hook", "-gu", hook_name])
 
 
-@router.get("/")
+@router.get("")
 async def list_hooks() -> List[Hook]:
     """List all available hooks and their status."""
     hooks = []
@@ -150,7 +152,7 @@ async def get_hook(hook_name: str) -> Hook:
         )
 
 
-@router.post("/")
+@router.post("")
 async def create_hook(hook_data: HookCreate) -> Hook:
     """Create/install a new hook."""
     if hook_data.name not in AVAILABLE_HOOKS:

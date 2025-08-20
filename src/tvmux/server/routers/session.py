@@ -36,7 +36,7 @@ class SessionWindows(BaseModel):
 
 
 # Session operations
-@router.get("/", response_model=List[Session])
+@router.get("", response_model=List[Session])
 async def list():
     result = subprocess.run(
         ["tmux", "list-sessions", "-F",
@@ -72,7 +72,7 @@ async def get(session_id: str):
     raise HTTPException(status_code=404, detail="Session not found")
 
 
-@router.post("/", response_model=Session)
+@router.post("", response_model=Session)
 async def create(session: SessionCreate):
     cmd = ["tmux", "new-session", "-d", "-s", session.name, "-c", session.start_directory]
     if session.window_name:

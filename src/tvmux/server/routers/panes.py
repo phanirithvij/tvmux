@@ -32,7 +32,7 @@ class PaneSendKeys(BaseModel):
     enter: bool = True
 
 
-@router.get("/", response_model=List[Pane])
+@router.get("", response_model=List[Pane])
 async def list_panes(window_id: Optional[str] = Query(None, description="Filter by window ID")):
     """List all panes or panes in a specific window."""
     if window_id:
@@ -69,7 +69,7 @@ async def list_panes(window_id: Optional[str] = Query(None, description="Filter 
     return panes
 
 
-@router.post("/", response_model=Pane)
+@router.post("", response_model=Pane)
 async def create_pane(pane: PaneCreate):
     """Create a new pane by splitting a window."""
     if pane.target_pane_id:

@@ -24,7 +24,7 @@ class WindowUpdate(BaseModel):
 
 
 # Window operations
-@router.get("/", response_model=List[Window])
+@router.get("", response_model=List[Window])
 async def list():
     cmd = ["tmux", "list-windows", "-a", "-F",
            "#{window_id}|#{window_name}|#{window_active}|#{window_panes}|#{window_width}x#{window_height}|#{window_layout}|#{session_name}|#{window_index}"]
@@ -57,7 +57,7 @@ async def get(window_id: str):
     raise HTTPException(status_code=404, detail="Window not found")
 
 
-@router.post("/", response_model=Window)
+@router.post("", response_model=Window)
 async def create(window: WindowCreate):
     if window.session:
         cmd = ["tmux", "new-window", "-d", "-t", window.session, "-P", "-F", "#{window_id}"]

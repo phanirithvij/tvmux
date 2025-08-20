@@ -3,12 +3,15 @@
 import click
 import json
 import inspect
+import logging
 from typing import Any, Dict, Optional, get_type_hints, get_origin, get_args
 from pydantic import BaseModel
 from fastapi.routing import APIRoute
 
 from ..connection import Connection
 from ..server.main import app
+
+logger = logging.getLogger(__name__)
 
 
 def pydantic_to_click_options(model: type[BaseModel]):
@@ -86,6 +89,8 @@ def create_command_for_route(route: APIRoute):
 
     def command_func(**kwargs):
         """Execute API call."""
+        logger.debug(f"CLI received kwargs: {kwargs}")
+
         conn = Connection()
         if not conn.is_running:
             click.echo("Server not running. Start with: tvmux server start", err=True)
@@ -107,9 +112,24 @@ def create_command_for_route(route: APIRoute):
         body = {}
         if body_model:
             for field_name in body_model.model_fields:
-                cli_name = field_name.replace('_', '-')
-                if cli_name in kwargs and kwargs[cli_name] is not None:
-                    body[field_name] = kwargs[cli_name]
+                # Click converts --hook-name to hook_name in kwargs, so use field_name directly
+                if field_name in kwargs and kwargs[field_name] is not None:
+                    logger.debug(f"Processing field {field_name} = {repr(kwargs[field_name])}")
+                    try:
+                        # Parse all arguments as JSON literals
+                        parsed_value = json.loads(kwargs[field_name])
+                        body[field_name] = parsed_value
+                        logger.debug(f"Successfully parsed {field_name} = {repr(parsed_value)}")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse {field_name} as JSON: {kwargs[field_name]} - {e}")
+                        raise
+
+        # Log the API call
+        logger.info(f"API call: {method} {path}")
+        if query:
+            logger.debug(f"Query params: {query}")
+        if body:
+            logger.debug(f"Body: {body}")
 
         # Make the API call
         api = conn.client()
@@ -129,6 +149,9 @@ def create_command_for_route(route: APIRoute):
                 click.echo(f"Unsupported method: {method}", err=True)
                 return
 
+            # Log response
+            logger.debug(f"Response: {response.status_code}")
+
             # Handle response
             if 200 <= response.status_code < 300:
                 try:
@@ -137,9 +160,11 @@ def create_command_for_route(route: APIRoute):
                 except:
                     click.echo(response.text)
             else:
+                logger.error(f"API error {response.status_code}: {response.text}")
                 click.echo(f"Error {response.status_code}: {response.text}", err=True)
 
         except Exception as e:
+            logger.exception(f"Request failed: {e}")
             click.echo(f"Request failed: {e}", err=True)
 
     # Add decorators for parameters

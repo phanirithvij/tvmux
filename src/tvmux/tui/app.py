@@ -18,42 +18,6 @@ from ..config import get_config
 logger = logging.getLogger(__name__)
 
 
-def setup_client_logging():
-    """Set up client-side logging."""
-    try:
-        config = get_config()
-        log_level = config.logging.level.upper()
-        client_log_file = config.logging.client_log_file
-
-        # Configure handlers
-        handlers = []
-
-        # Add file handler if configured (TUI apps should only log to file)
-        if client_log_file:
-            from pathlib import Path
-            log_path = Path(client_log_file).expanduser()
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-            handlers.append(logging.FileHandler(log_path))
-        else:
-            # If no file configured, use a null handler to avoid console spam
-            handlers.append(logging.NullHandler())
-
-        # Configure logging
-        logging.basicConfig(
-            level=getattr(logging, log_level, logging.INFO),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=handlers,
-            force=True  # Override any existing config
-        )
-
-        logger.info("Client logging initialized")
-
-    except Exception:
-        # Fallback to basic console logging
-        logging.basicConfig(level=logging.INFO)
-        logger.exception("Failed to setup client logging, using defaults")
-
-
 class ChannelTuner(Static):
     """TV channel tuner showing tmux windows as channels."""
 
@@ -82,7 +46,7 @@ class ChannelTuner(Static):
 
                     # Get all sessions
                     logger.info("Making API call to /sessions/")
-                    sessions_response = client.get("/sessions/")
+                    sessions_response = client.get("/sessions")
                     logger.info(f"Sessions response: {sessions_response.status_code}")
                     if sessions_response.status_code == 200:
                         sessions = sessions_response.json()
@@ -105,7 +69,7 @@ class ChannelTuner(Static):
                                     self.channels.append(channel)
 
                     # Get active recordings
-                    recordings_response = client.get("/recordings/")
+                    recordings_response = client.get("/recordings")
                     if recordings_response.status_code == 200:
                         recordings = recordings_response.json()
                         self.active_recordings = {r['id']: r for r in recordings}
@@ -182,7 +146,7 @@ class ChannelTuner(Static):
                 # Start recording
                 session_name = channel['session']
                 window_id = channel['window']
-                response = client.post("/recordings/", json={
+                response = client.post("/recordings", json={
                     'session_id': session_name,
                     'window_id': window_id
                     # active_pane will be auto-detected by server
@@ -498,9 +462,7 @@ class TVMuxApp(App):
 
 def run_tui():
     """Run the tvmux TUI application."""
-    # Set up client logging first
-    setup_client_logging()
-
+    # Logging is now set up by the main CLI
     app = TVMuxApp()
     app.run()
 
