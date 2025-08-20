@@ -8,10 +8,13 @@ and follows the user around the current window.
 Install `tvmux` from pip or uv, or run standalone from `uvx`, like so:
 
 ```bash
-$ uvx tvmux --help
+$ uvx tvmux
 ```
 
-Or, if installed, run from inside a tmux pane:
+The above will open a `textual` user interface, where you can view ongoing
+recordings, start + stop them etc.
+
+You can start recording from the command line too:
 
 ```bash
 # Start recording
