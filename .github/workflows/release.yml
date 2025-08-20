@@ -1,26 +1,33 @@
-name: Release tvmux
+name: Release
 
 on:
   push:
     tags:
-      - '*.*.*'  # Trigger on any semantic version tag (e.g. 0.3.1)
+      - '*'
 
 jobs:
-  build:
+  release:
+
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Build script
-        run: make build
-
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
+      - uses: actions/checkout@v3
         with:
-          name: tvmux ${{ github.ref_name }}
-          body_path: README.md
-          files: build/tvmux
+          fetch-depth: 0
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Build dev environment
+        run: make dev
+      - name: Unit tests
+        run: make test
+      - name: Build distribution
+        run: make dist
+      - name: Push release
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: make release
+      - name: Update docs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: make docs

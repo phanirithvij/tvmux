@@ -41,7 +41,6 @@ To customize, create `~/.tvmux.conf` or use environment variables like `TVMUX_OU
 
 * [🏠 home](https://bitplane.net/dev/python/tvmux)
 * [📚 pydoc](https://bitplane.net/dev/python/tvmux/pydoc)
-* [📚 api](https://bitplane.net/dev/python/tvmux/api)
 * [🐱 github](https://github.com/bitplane/tvmux)
 * [🐍 pypi](https://pypi.org/project/tvmux)
 
@@ -56,7 +55,7 @@ To customize, create `~/.tvmux.conf` or use environment variables like `TVMUX_OU
 
 ## TODO
 
-### Prep for next steps
+### Prep for 0.6
 
-- [ ] Need asciinema scrubber using bittty ([wip](https://github.com/ttygroup/textual-asciinema))
+- [x] Need asciinema scrubber using bittty ([wip](https://github.com/ttygroup/textual-asciinema))
 - [ ] Start a basic TUI in Textual
