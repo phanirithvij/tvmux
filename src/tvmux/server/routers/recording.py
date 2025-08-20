@@ -69,14 +69,33 @@ class RecordingCreate(BaseModel):
     """Request to start recording a window."""
     session_id: str
     window_id: str  # Window ID to record
-    active_pane: str
+    active_pane: Optional[str] = None  # If not provided, will detect active pane
     output_dir: Optional[str] = None
 
 
 @router.post("/", response_model=Recording)
 async def create_recording(request: RecordingCreate, response: Response) -> Recording:
     """Start a new recording."""
-    logger.info(f"Recording request: session={request.session_id}, window={request.window_id}, pane={request.active_pane}")
+
+    # Auto-detect active pane if not provided
+    active_pane = request.active_pane
+    if not active_pane:
+        try:
+            result = subprocess.run([
+                "tmux", "display-message", "-t", f"{request.session_id}:{request.window_id}",
+                "-p", "#{pane_id}"
+            ], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                active_pane = result.stdout.strip()
+                logger.debug(f"Auto-detected active pane: {active_pane}")
+            else:
+                active_pane = "%0"  # Fallback to first pane
+                logger.warning(f"Could not detect active pane, using fallback: {active_pane}")
+        except Exception:
+            active_pane = "%0"  # Fallback to first pane
+            logger.warning(f"Error detecting active pane, using fallback: {active_pane}")
+
+    logger.info(f"Recording request: session={request.session_id}, window={request.window_id}, pane={active_pane}")
 
     # Create unique ID from session and window
     recording_id = f"{request.session_id}:{request.window_id}"
@@ -108,7 +127,7 @@ async def create_recording(request: RecordingCreate, response: Response) -> Reco
 
     # Start recording
     try:
-        await recording.start(request.active_pane, output_dir)
+        await recording.start(active_pane, output_dir)
         recorders[recording_id] = recording
         logger.info(f"Recording started successfully for {recording_id}")
         response.status_code = 201  # Created - new recording
@@ -131,12 +150,6 @@ async def delete_recording(recording_id: str) -> dict:
     # Remove from active recorders
     del recorders[recording_id]
 
-    # Auto-shutdown server if no more recordings and configured to do so
-    config = get_config()
-    if not recorders and config.server.auto_shutdown:
-        logger.info("No more recordings active, scheduling server shutdown...")
-        # Schedule shutdown after a brief delay to allow response to be sent
-        asyncio.create_task(_shutdown_server_delayed())
 
     return {"status": "stopped", "recording_id": recording_id, "cast_path": cast_path}
 

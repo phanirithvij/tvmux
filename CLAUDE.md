@@ -118,3 +118,8 @@ tvmux supports flexible configuration through multiple sources:
 - Pre-commit hooks enforce code quality
 - Background process management prevents orphaned processes
 - Full configuration system with TOML support and environment overrides
+
+**IMPORTANT:** Do not run the TUI application (`tvmux` or `python -m tvmux.tui.app`) in development - it will interfere with the terminal session.
+
+- you can use tmux capture-pane in this project. The user allows it.
+- logs are in /tmp/tvmux-$(whoami)

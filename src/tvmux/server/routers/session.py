@@ -26,6 +26,7 @@ class WindowReference(BaseModel):
     """Reference to a window in a session."""
     window_id: str
     index: int
+    name: str
 
 
 class SessionWindows(BaseModel):
@@ -62,11 +63,11 @@ async def list():
     return sessions
 
 
-@router.get("/{name}", response_model=Session)
-async def get(name: str):
+@router.get("/{session_id}", response_model=Session)
+async def get(session_id: str):
     sessions = await list()
     for session in sessions:
-        if session.name == name:
+        if session.id == session_id:
             return session
     raise HTTPException(status_code=404, detail="Session not found")
 
@@ -82,15 +83,23 @@ async def create(session: SessionCreate):
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Failed to create session: {result.stderr}")
 
-    return await get(session.name)
+    # Get the session by name to find its ID, then return by ID
+    sessions = await list()
+    for s in sessions:
+        if s.name == session.name:
+            return await get(s.id)
+    raise HTTPException(status_code=404, detail="Session not found after creation")
 
 
-@router.patch("/{name}")
-async def update(name: str, update: SessionUpdate):
+@router.patch("/{session_id}")
+async def update(session_id: str, update: SessionUpdate):
     """Update a session (rename)."""
+    # Get current session to find its name for tmux command
+    session = await get(session_id)
+
     if update.new_name:
         result = subprocess.run(
-            ["tmux", "rename-session", "-t", name, update.new_name],
+            ["tmux", "rename-session", "-t", session.name, update.new_name],
             capture_output=True,
             text=True
         )
@@ -98,15 +107,19 @@ async def update(name: str, update: SessionUpdate):
         if result.returncode != 0:
             raise HTTPException(status_code=400, detail=f"Failed to rename session: {result.stderr}")
 
-        return await get(update.new_name)
+        # Return the updated session (ID stays the same, name changes)
+        return await get(session_id)
 
-    return await get(name)
+    return session
 
 
-@router.delete("/{name}")
-async def delete(name: str):
+@router.delete("/{session_id}")
+async def delete(session_id: str):
+    # Get session to find its name for tmux command
+    session = await get(session_id)
+
     result = subprocess.run(
-        ["tmux", "kill-session", "-t", name],
+        ["tmux", "kill-session", "-t", session.name],
         capture_output=True,
         text=True
     )
@@ -114,28 +127,29 @@ async def delete(name: str):
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Failed to kill session: {result.stderr}")
 
-    return {"status": "deleted", "session": name}
+    return {"status": "deleted", "session": session.name, "id": session_id}
 
 
-@router.post("/{name}/attach")
-async def attach_session(name: str):
+@router.post("/{session_id}/attach")
+async def attach_session(session_id: str):
     """Attach to a session (returns attach command for client to execute)."""
-    # Check session exists
-    sessions = await list()
-    if not any(s.name == name for s in sessions):
-        raise HTTPException(status_code=404, detail=f"Session '{name}' not found")
+    # Get session to find its name for tmux command
+    session = await get(session_id)
 
     return {
-        "command": f"tmux attach-session -t {name}",
+        "command": f"tmux attach-session -t {session.name}",
         "note": "Execute this command in your terminal to attach"
     }
 
 
-@router.post("/{name}/detach")
-async def detach_session(name: str):
+@router.post("/{session_id}/detach")
+async def detach_session(session_id: str):
     """Detach all clients from a session."""
+    # Get session to find its name for tmux command
+    session = await get(session_id)
+
     result = subprocess.run(
-        ["tmux", "detach-client", "-s", name],
+        ["tmux", "detach-client", "-s", session.name],
         capture_output=True,
         text=True
     )
@@ -143,18 +157,16 @@ async def detach_session(name: str):
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Failed to detach clients: {result.stderr}")
 
-    return {"status": "detached", "session": name}
+    return {"status": "detached", "session": session.name, "id": session_id}
 
 
-@router.get("/{name}/windows", response_model=SessionWindows)
-async def get_session_windows(name: str):
+@router.get("/{session_id}/windows", response_model=SessionWindows)
+async def get_session_windows(session_id: str):
     """Get all window references for a session."""
-    # Check session exists
-    sessions = await list()
-    if not any(s.name == name for s in sessions):
-        raise HTTPException(status_code=404, detail=f"Session '{name}' not found")
+    # Get session to find its name for tmux command
+    session = await get(session_id)
 
-    cmd = ["tmux", "list-windows", "-t", name, "-F", "#{window_id}|#{window_index}"]
+    cmd = ["tmux", "list-windows", "-t", session.name, "-F", "#{window_id}|#{window_index}|#{window_name}"]
     result = subprocess.run(cmd, capture_output=True, text=True)
 
     windows = []
@@ -164,7 +176,8 @@ async def get_session_windows(name: str):
                 parts = line.split("|")
                 windows.append(WindowReference(
                     window_id=parts[0],
-                    index=int(parts[1])
+                    index=int(parts[1]),
+                    name=parts[2]
                 ))
 
-    return SessionWindows(session=name, windows=windows)
+    return SessionWindows(session=session.name, windows=windows)

@@ -38,12 +38,20 @@ class AnnotationConfig(BaseModel):
     include_cursor_state: bool = Field(default=True, description="Include cursor position/visibility")
 
 
+class LoggingConfig(BaseModel):
+    """Logging configuration."""
+    level: str = Field(default="INFO", description="Log level (DEBUG/INFO/WARNING/ERROR)")
+    include_access_logs: bool = Field(default=False, description="Include HTTP access logs in server")
+    client_log_file: Optional[str] = Field(default="~/.tvmux/client.log", description="Client log file path (None = no file logging)")
+
+
 class Config(BaseModel):
     """Main tvmux configuration."""
     output: OutputConfig = Field(default_factory=OutputConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     recording: RecordingConfig = Field(default_factory=RecordingConfig)
     annotations: AnnotationConfig = Field(default_factory=AnnotationConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 def load_config(config_file: Optional[str] = None) -> Config:

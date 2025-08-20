@@ -16,8 +16,16 @@ from .. import __version__
 
 def setup_logging():
     """Configure logging for the application."""
-    # Get log level from environment or default to INFO
-    log_level = os.getenv('TVMUX_LOG_LEVEL', 'INFO').upper()
+    # Get config first, then check environment variable as fallback
+    try:
+        from ..config import get_config
+        config = get_config()
+        log_level = config.logging.level.upper()
+        include_access_logs = config.logging.include_access_logs
+    except Exception:
+        # Fallback to environment variable if config fails
+        log_level = os.getenv('TVMUX_LOG_LEVEL', 'INFO').upper()
+        include_access_logs = False
 
     # Configure root logger
     handlers = [logging.StreamHandler()]  # Console output
@@ -33,8 +41,11 @@ def setup_logging():
         handlers=handlers
     )
 
-    # Set specific loggers to appropriate levels
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)  # Reduce HTTP noise
+    # Set uvicorn loggers based on config
+    if include_access_logs:
+        logging.getLogger('uvicorn.access').setLevel(logging.INFO)
+    else:
+        logging.getLogger('uvicorn.access').setLevel(logging.WARNING)  # Reduce HTTP noise
     logging.getLogger('uvicorn.error').setLevel(logging.INFO)
 
     # Our application loggers
