@@ -19,7 +19,8 @@ dependencies = [
     "requests>=2.0",
     "tomli>=1.2.0",
     "tomli-w>=1.0.0",
-    "textual>=5.2.0"
+    "textual>=5.2.0",
+    "textual-asciinema>=0.0.3"
 ]
 
 [project.optional-dependencies]

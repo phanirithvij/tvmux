@@ -7,6 +7,7 @@ from .server import server
 from .record import rec
 from .config import config
 from .api_cli import api
+from .tui import tui
 from ..config import load_config, set_config
 from ..connection import Connection
 from .. import __version__
@@ -38,26 +39,32 @@ def print_version(ctx, param, value):
     ctx.exit()
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.option('--log-level', default='INFO', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR']),
               help='Set logging level')
 @click.option('--config-file', type=click.Path(exists=True),
               help='Path to configuration file')
 @click.option('--version', is_flag=True, callback=print_version,
               expose_value=False, is_eager=True, help='Show version information')
-def cli(log_level, config_file):
+@click.pass_context
+def cli(ctx, log_level, config_file):
     """Per-window recorder for tmux."""
     os.environ['TVMUX_LOG_LEVEL'] = log_level
 
     # Load configuration
     config = load_config(config_file)
     set_config(config)
+    
+    # If no command specified, launch TUI
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(tui)
 
 
 cli.add_command(server)
 cli.add_command(rec)
 cli.add_command(config)
 cli.add_command(api)
+cli.add_command(tui)
 
 
 if __name__ == "__main__":
