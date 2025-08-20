@@ -108,10 +108,7 @@ class Recording(BaseModel):
         # Stop streaming current pane
         self._stop_streaming()
 
-        # Send reset sequence
-        self._write_reset_sequence()
-
-        # Dump new pane state
+        # Dump new pane state (includes reset)
         self._dump_pane(new_pane_id)
 
         # Start streaming new pane
@@ -213,10 +210,10 @@ class Recording(BaseModel):
         try:
             pane_target = f"{self.session_id}:{self.window_id}.{pane_id}"
 
-            # Get terminal state info including alternate screen status and window title
+            # Get all terminal state info in one call
             state_result = subprocess.run([
                 "tmux", "display-message", "-t", pane_target,
-                "-p", "#{cursor_x},#{cursor_y},#{cursor_flag},#{alternate_on},#{alternate_saved_x},#{alternate_saved_y},#{pane_title}"
+                "-p", "#{pane_width},#{pane_height},#{cursor_x},#{cursor_y},#{cursor_flag},#{alternate_on},#{alternate_saved_x},#{alternate_saved_y},#{scroll_region_upper},#{scroll_region_lower},#{pane_title}"
             ], capture_output=True, text=True)
 
             if state_result.returncode != 0:
@@ -225,70 +222,87 @@ class Recording(BaseModel):
 
             try:
                 state_parts = state_result.stdout.strip().split(',')
-                cursor_x, cursor_y, cursor_flag = int(state_parts[0]), int(state_parts[1]), int(state_parts[2])
-                alternate_on = int(state_parts[3]) == 1
-                alt_saved_x, alt_saved_y = int(state_parts[4]), int(state_parts[5])
-                pane_title = state_parts[6] if len(state_parts) > 6 else ""
+                pane_width, pane_height = int(state_parts[0]), int(state_parts[1])
+                cursor_x, cursor_y, cursor_flag = int(state_parts[2]), int(state_parts[3]), int(state_parts[4])
+                alternate_on = int(state_parts[5]) == 1
+                alt_saved_x, alt_saved_y = int(state_parts[6]), int(state_parts[7])
+                scroll_upper, scroll_lower = int(state_parts[8]), int(state_parts[9])
+                pane_title = state_parts[10] if len(state_parts) > 10 else ""
             except (ValueError, IndexError) as e:
                 logger.warning(f"Failed to parse pane state: {state_result.stdout} - {e}")
                 return
 
+            # Phase 1: Write reset sequences and close
             with open(self.fifo_path, "w") as f:
-                # 3. Set terminal flags (raw mode, mouse, scroll regions, etc.)
+                # 1. Full terminal reset first
+                f.write("\033c")         # Full terminal reset (ESC c)
+
+                # 2. Set terminal size
+                f.write(f"\033[8;{pane_height};{pane_width}t")  # Set window size
+
+                # 3. Ensure we're in normal screen buffer and clear
+                f.write("\033[?1049l")   # Ensure we're in normal screen buffer
+                f.write("\033[2J\033[H") # Clear screen and move cursor to home
+
+                f.flush()
+            # File handle closed, EOF sent to tail
+
+            # Phase 2: Let tmux write normal screen content directly to FIFO
+            subprocess.run([
+                "tmux", "capture-pane", "-t", pane_target, "-e", "-p"
+            ], stdout=open(self.fifo_path, "w"), check=False)
+            # tmux opens FIFO, writes content, closes (EOF sent)
+
+            # Phase 3: Handle alternate screen if needed
+            if alternate_on:
+                with open(self.fifo_path, "w") as f:
+                    f.write("\033[?1049h")   # Switch to alternate screen buffer
+                    f.write("\033[2J\033[H") # Clear alternate screen
+                    f.flush()
+                # File closed, EOF sent
+
+                # Let tmux write alternate screen content
+                subprocess.run([
+                    "tmux", "capture-pane", "-t", pane_target, "-a", "-e", "-p"
+                ], stdout=open(self.fifo_path, "w"), check=False)
+                # tmux writes alt content, closes (EOF sent)
+
+                # Update cursor position for alt screen
+                cursor_x, cursor_y = alt_saved_x, alt_saved_y
+
+            # Phase 4: Write final terminal setup and close
+            with open(self.fifo_path, "w") as f:
+                # 5. Set scroll region if not full screen
+                if scroll_upper > 0 or scroll_lower < pane_height - 1:
+                    # Convert to 1-based for terminal escape sequence
+                    f.write(f"\033[{scroll_upper + 1};{scroll_lower + 1}r")
+
+                # 6. Set terminal modes
                 f.write("\033[?1000h")   # Enable mouse reporting
                 f.write("\033[?1002h")   # Enable button event mouse reporting
                 f.write("\033[?1006h")   # Enable SGR extended mouse reporting
                 f.write("\033[?7h")      # Enable auto-wrap mode
-                f.write("\033[?25h")     # Show cursor (will be overridden later if needed)
 
-                # 4. Get and send primary buffer content
-                primary_result = subprocess.run([
-                    "tmux", "capture-pane", "-t", pane_target, "-e", "-p"
-                ], capture_output=True, text=True)
-
-                if primary_result.returncode == 0:
-                    primary_content = primary_result.stdout.rstrip('\n')
-                    f.write(primary_content)
-
-                # 5. If in alternate screen mode, switch to it
-                if alternate_on:
-                    f.write("\033[?1049h")  # Enable alternate screen buffer
-
-                    # 6. If alt mode is on, dump the contents of the alt buffer
-                    alt_result = subprocess.run([
-                        "tmux", "capture-pane", "-t", pane_target, "-a", "-e", "-p"
-                    ], capture_output=True, text=True)
-
-                    if alt_result.returncode == 0:
-                        f.write("\033[2J\033[H")  # Clear alt screen first
-                        alt_content = alt_result.stdout.rstrip('\n')
-                        f.write(alt_content)
-
-                        # Use alternate screen cursor position
-                        cursor_x, cursor_y = alt_saved_x, alt_saved_y
-
-                # 7. Set window title (after content to avoid being overwritten)
+                # 7. Set window title
                 if pane_title:
-                    f.write(f"\033]0;{pane_title}\007")  # Set window title
+                    f.write(f"\033]0;{pane_title}\007")
 
-                # 8. Set up scroll region, cursor visibility, raw mode, etc.
-                # TODO: Get actual scroll region from tmux if available
-                # For now, just handle cursor visibility
-
-                # 9. Reposition the text cursor
+                # 8. Set cursor position and visibility
                 config = get_config()
                 if config.annotations.include_cursor_state:
-                    row = cursor_y + 1  # Convert to 1-based
+                    # Position cursor (convert to 1-based)
+                    row = cursor_y + 1
                     col = cursor_x + 1
                     f.write(f"\033[{row};{col}H")
 
-                    # Set final cursor visibility
+                    # Set cursor visibility
                     if cursor_flag == 1:
                         f.write("\033[?25h")  # Show cursor
                     else:
                         f.write("\033[?25l")  # Hide cursor
 
                 f.flush()
+            # Final file handle closed, EOF sent
 
         except Exception as e:
             logger.warning(f"Failed to dump pane {pane_id}: {e}")
