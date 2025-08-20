@@ -211,10 +211,9 @@ class CRTPlayer(Static):
 
     def compose(self) -> ComposeResult:
         """Compose the CRT player."""
-        with Container(classes="crt-container"):
-            with Container(classes="crt-screen"):
-                # Pure player area - initially empty, player added dynamically
-                yield Static("")  # Empty placeholder initially
+        # Container for the player
+        with Container(id="player-container"):
+            yield Static("", id="placeholder")
 
     async def play_recording(self, recording_path: Path) -> None:
         """Play a recording file."""
@@ -225,17 +224,57 @@ class CRTPlayer(Static):
             if self.player:
                 await self.player.remove()
 
+            # Remove placeholder or blank screen
+            try:
+                placeholder = self.query_one("#placeholder")
+                await placeholder.remove()
+            except Exception:
+                pass
+
+            try:
+                blank_screen = self.query_one("#blank-screen")
+                await blank_screen.remove()
+            except Exception:
+                pass
+
             # Create new player
             self.player = AsciinemaPlayer(str(recording_path))
 
-            # Find the screen container and add player
-            screen_container = self.query_one(".crt-screen")
-            await screen_container.mount(self.player)
+            # Mount to the container
+            container = self.query_one("#player-container")
+            await container.mount(self.player)
 
             logger.info(f"Playing recording: {recording_path.name}")
 
         except Exception:
             logger.exception("Error playing recording")
+
+    async def show_blank(self) -> None:
+        """Show a blank/static screen for channels not recording."""
+        try:
+            # Remove existing player
+            if self.player:
+                await self.player.remove()
+                self.player = None
+
+            # Remove placeholder if it exists
+            try:
+                placeholder = self.query_one("#placeholder")
+                await placeholder.remove()
+            except Exception:
+                pass
+
+            # Add a blank static widget (placeholder for future TV static)
+            container = self.query_one("#player-container")
+            # Show some indication that it's blank/no signal
+            blank_content = "[dim]NO SIGNAL[/dim]"
+            blank_screen = Static(blank_content, id="blank-screen")
+            await container.mount(blank_screen)
+
+            logger.info("Showing blank screen")
+
+        except Exception:
+            logger.exception("Error showing blank screen")
 
 
 class TVMuxApp(App):
@@ -253,7 +292,6 @@ class TVMuxApp(App):
     .crt-screen {
         background: #001100;
         color: #00ff00;
-        border: solid #333333;
         min-height: 20;
         padding: 0;
     }
@@ -278,6 +316,21 @@ class TVMuxApp(App):
         min-height: 10;
         max-height: 15;
         padding: 1;
+    }
+
+    /* Player container - no styling interference */
+    #player-container {
+        border: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    /* Blank screen - centered text */
+    #blank-screen {
+        text-align: center;
+        content-align: center middle;
+        width: 100%;
+        height: 100%;
     }
 
     /* Remove asciinema player borders and padding, fill container */
@@ -315,6 +368,7 @@ class TVMuxApp(App):
         super().__init__(**kwargs)
         self.player: Optional[CRTPlayer] = None
         self.tuner: Optional[ChannelTuner] = None
+        self.connection = Connection()
 
     def compose(self) -> ComposeResult:
         """Compose the application layout."""
@@ -330,6 +384,12 @@ class TVMuxApp(App):
                 yield self.tuner
 
         yield Footer()
+
+    async def on_mount(self) -> None:
+        """Initialize player when app starts."""
+        if self.player:
+            # Check if the initially selected channel is recording
+            await self.tune_to_selected_channel()
 
     async def action_refresh(self) -> None:
         """Refresh channels list."""
@@ -373,10 +433,8 @@ class TVMuxApp(App):
 
         channel = self.tuner.get_selected_channel()
         if not channel or not channel.get('recording'):
-            # Stop current playback if not recording
-            if self.player.player:
-                await self.player.player.remove()
-                self.player.player = None
+            # Show blank player for channels not recording
+            await self.player.show_blank()
             return
 
         # Find the recording file for this channel
