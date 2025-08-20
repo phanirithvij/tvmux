@@ -5,9 +5,10 @@ from typing import Optional, List
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, Label, ListView, ListItem
+from textual.widgets import Header, Footer, Static, Label, ListView, ListItem, Button
 from textual.reactive import reactive
 from textual.screen import Screen
+from textual.message import Message
 from textual_asciinema import AsciinemaPlayer
 
 from urllib.parse import quote
@@ -125,30 +126,26 @@ class ChannelTuner(Static):
             logger.exception("Error loading channels")
             self.channels = [{'name': 'Error loading channels', 'id': None, 'recording': False}]
 
-    def render(self) -> str:
-        """Render the channel tuner."""
-        if not self.channels:
-            return "📺 No channels available\n\nOpen a tmux session to see channels"
+        # Refresh the UI after updating channels
+        await self.recompose()
 
-        lines = []
+    def compose(self) -> ComposeResult:
+        """Compose the channel buttons."""
+        with Horizontal():
+            if not self.channels:
+                yield Static("📺 No channels - open tmux sessions")
+            else:
+                for i, channel in enumerate(self.channels):
+                    status = "🔴" if channel.get('recording') else "⚫"
+                    # Extract just the window name part after the colon
+                    name_parts = channel['name'].split(':', 1)
+                    window_name = name_parts[1] if len(name_parts) > 1 else channel['name']
+                    button_text = f"{status} {window_name}"
 
-        for i, channel in enumerate(self.channels[:8]):  # Show 8 channels max
-            marker = "▶ " if i == self.selected_index else "  "
-            status = "🔴" if channel.get('recording') else "⚫"
-            name = channel['name']
-
-            lines.append(f"{marker}{status} {name}")
-
-        if len(self.channels) > 8:
-            lines.append(f"\n... and {len(self.channels) - 8} more")
-
-        # Show current selection info
-        if self.channels and 0 <= self.selected_index < len(self.channels):
-            selected = self.channels[self.selected_index]
-            status_text = "RECORDING" if selected.get('recording') else "idle"
-            lines.append(f"\nSelected: {selected['name']} ({status_text})")
-
-        return "\n".join(lines)
+                    # Add variant for selected button
+                    variant = "primary" if i == self.selected_index else "default"
+                    button = Button(button_text, id=f"channel-{i}", variant=variant)
+                    yield button
 
     def action_select_next(self) -> None:
         """Select next channel."""
@@ -198,6 +195,27 @@ class ChannelTuner(Static):
 
         except Exception:
             logger.exception("Error toggling recording")
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle channel button clicks."""
+        if event.button.id and event.button.id.startswith("channel-"):
+            # Extract channel index from button ID
+            channel_index = int(event.button.id.split("-")[1])
+            if 0 <= channel_index < len(self.channels):
+                self.selected_index = channel_index
+                # Update button variants to show selection
+                for i, button in enumerate(self.query("Button")):
+                    if button.id and button.id.startswith("channel-"):
+                        button.variant = "primary" if i == self.selected_index else "default"
+
+                # Notify the main app to tune to this channel
+                self.post_message(self.ChannelSelected(channel_index))
+
+    class ChannelSelected(Message):
+        """Message sent when a channel button is clicked."""
+        def __init__(self, channel_index: int):
+            super().__init__()
+            self.channel_index = channel_index
 
 
 class CRTPlayer(Static):
@@ -333,6 +351,17 @@ class TVMuxApp(App):
         height: 100%;
     }
 
+    /* Channel buttons - no padding, centered */
+    Button {
+        padding: 0;
+        margin: 0 1;
+    }
+
+    /* Center the button container */
+    Horizontal {
+        align: center middle;
+    }
+
     /* Remove asciinema player borders and padding, fill container */
     AsciinemaPlayer {
         border: none;
@@ -459,6 +488,12 @@ class TVMuxApp(App):
 
         except Exception:
             logger.exception(f"Error playing channel: {channel['name']}")
+
+    async def on_channel_tuner_channel_selected(self, message: ChannelTuner.ChannelSelected) -> None:
+        """Handle channel selection from button clicks."""
+        if self.tuner:
+            self.tuner.selected_index = message.channel_index
+            await self.tune_to_selected_channel()
 
 
 def run_tui():
