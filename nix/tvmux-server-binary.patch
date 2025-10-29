@@ -1,0 +1,9 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 348a965..7f19fa2 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -48,3 +48,4 @@ docstring-code-format = true
+ 
+ [project.scripts]
+ tvmux = "tvmux.cli.main:cli"
++tvmux-server = "tvmux.server.main:run_server"
